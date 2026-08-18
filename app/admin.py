@@ -7,6 +7,7 @@ change the bot's wording without a deploy, nothing more.
 from __future__ import annotations
 
 import io
+import json
 from datetime import datetime
 from html import escape
 
@@ -30,7 +31,8 @@ _PAGE = """<!doctype html>
  nav a{{margin-left:1rem}} button{{padding:.4rem 1rem;font-size:1rem}}
 </style></head><body>
 <nav><a href="/admin">פרומפט</a><a href="/admin/prices">מחירים</a>
-<a href="/admin/orders">הזמנות</a><a href="/">דיבאג</a></nav>
+<a href="/admin/customers">לקוחות</a><a href="/admin/orders">הזמנות</a>
+<a href="/admin/calls">שיחות</a><a href="/">דיבאג</a></nav>
 <h1>{title}</h1>
 {body}
 </body></html>"""
@@ -102,6 +104,104 @@ def prices_delete(price_id: int) -> RedirectResponse:
         if (row := session.get(db.Price, price_id)) is not None:
             session.delete(row)
     return RedirectResponse("/admin/prices", status_code=303)
+
+
+@router.get("/customers", response_class=HTMLResponse)
+def customers_page() -> HTMLResponse:
+    with db.session_scope() as session:
+        rows = session.scalars(select(db.Customer).order_by(db.Customer.phone)).all()
+        listed = "".join(
+            f"<tr><td>{escape(r.phone)}</td><td>{escape(r.name or '')}</td>"
+            f"<td>{escape(r.default_pickup or '')}</td><td>{escape(r.notes or '')}</td>"
+            f'<td><form method="post" action="/admin/customers/{r.id}/delete">'
+            f'<button type="submit">מחק</button></form></td></tr>'
+            for r in rows
+        )
+    return _page(
+        "לקוחות",
+        f"""<table><tr><th>טלפון</th><th>שם</th><th>כתובת איסוף</th><th>הערות</th>
+        <th></th></tr>{listed}</table>
+        <form method="post" action="/admin/customers">
+        <input name="phone" placeholder="טלפון" required>
+        <input name="name" placeholder="שם">
+        <input name="default_pickup" placeholder="כתובת איסוף">
+        <input name="notes" placeholder="הערות">
+        <button type="submit">שמור</button></form>
+        <p>שמירה על מספר קיים מעדכנת אותו.</p>""",
+    )
+
+
+@router.post("/customers")
+def customers_save(
+    phone: str = Form(...),
+    name: str = Form(""),
+    default_pickup: str = Form(""),
+    notes: str = Form(""),
+) -> RedirectResponse:
+    normalized = db.normalize_phone(phone)
+    with db.session_scope() as session:
+        row = session.scalars(
+            select(db.Customer).where(db.Customer.phone == normalized)
+        ).first()
+        if row is None:
+            row = db.Customer(phone=normalized)
+            session.add(row)
+        row.name = name or None
+        row.default_pickup = default_pickup or None
+        row.notes = notes or None
+    return RedirectResponse("/admin/customers", status_code=303)
+
+
+@router.post("/customers/{customer_id}/delete")
+def customers_delete(customer_id: int) -> RedirectResponse:
+    with db.session_scope() as session:
+        if (row := session.get(db.Customer, customer_id)) is not None:
+            session.delete(row)
+    return RedirectResponse("/admin/customers", status_code=303)
+
+
+@router.get("/calls", response_class=HTMLResponse)
+def calls_page() -> HTMLResponse:
+    with db.session_scope() as session:
+        rows = session.scalars(
+            select(db.CallLog).order_by(db.CallLog.started_at.desc()).limit(100)
+        ).all()
+        listed = "".join(
+            f"<tr><td>{r.started_at:%d/%m %H:%M}</td><td>{escape(r.phone or '')}</td>"
+            f"<td>{escape(r.summary or '')}</td>"
+            f'<td><a href="/admin/calls/{r.id}">תמליל</a></td></tr>'
+            for r in rows
+        )
+    return _page(
+        "שיחות",
+        f"""<table><tr><th>מתי</th><th>מתקשר</th><th>תוצאה</th><th></th></tr>
+        {listed}</table>""",
+    )
+
+
+@router.get("/calls/{call_pk}", response_class=HTMLResponse)
+def call_detail(call_pk: int) -> HTMLResponse:
+    with db.session_scope() as session:
+        row = session.get(db.CallLog, call_pk)
+        if row is None:
+            return _page("שיחה לא נמצאה", "<p>אין רשומה כזאת.</p>")
+        stats = json.loads(row.stats_json) if row.stats_json else {}
+        transcript = escape(row.transcript or "")
+        latencies = stats.get("reply_latency_ms") or []
+        tool_calls = stats.get("tool_calls") or []
+    listed_tools = "".join(
+        f"<li>{escape(t.get('name', ''))} ← "
+        f"{escape(json.dumps(t.get('result'), ensure_ascii=False))}</li>"
+        for t in tool_calls
+    )
+    return _page(
+        f"שיחה {row.call_id}",
+        f"""<p>מתקשר: {escape(row.phone or '')} — תורים: {stats.get('turns', 0)} —
+        קטיעות: {stats.get('interruptions', 0)}</p>
+        <p>זמני תגובה (ms): {escape(', '.join(str(x) for x in latencies)) or '—'}</p>
+        <h3>כלים שהופעלו</h3><ul>{listed_tools or '<li>אין</li>'}</ul>
+        <h3>תמליל</h3><pre style="white-space:pre-wrap">{transcript}</pre>""",
+    )
 
 
 @router.get("/orders", response_class=HTMLResponse)

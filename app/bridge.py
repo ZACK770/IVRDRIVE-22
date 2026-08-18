@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import json
 import logging
 import os
 import time
@@ -177,6 +178,7 @@ class CallBridge:
                     phone=self._tools.caller,
                     ended_at=datetime.utcnow(),
                     transcript=transcript,
+                    stats_json=json.dumps(self.stats, ensure_ascii=False),
                     summary=(
                         f"order #{self._tools.saved_order_id}"
                         if self._tools.saved_order_id

@@ -83,6 +83,8 @@ class CallLog(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
     transcript: Mapped[str | None] = mapped_column(Text)
     summary: Mapped[str | None] = mapped_column(Text)
+    #: Raw bridge stats (turns, reply_latency_ms, tool_calls) as JSON.
+    stats_json: Mapped[str | None] = mapped_column(Text)
 
 
 class Prompt(Base):
@@ -174,8 +176,27 @@ def set_prompt(name: str, content: str) -> None:
             row.content = content
 
 
+def _add_missing_columns() -> None:
+    """Poor man's migration: the schema here only ever grows, and SQLite takes
+    ADD COLUMN cheaply, so a single-file database does not need Alembic."""
+    with engine.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            existing = {
+                row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table.name})")
+            }
+            for column in table.columns:
+                if not existing or column.name in existing or not column.nullable:
+                    continue
+                conn.exec_driver_sql(
+                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} "
+                    f"{column.type.compile(engine.dialect)}"
+                )
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
+    if engine.dialect.name == "sqlite":
+        _add_missing_columns()
     with session_scope() as session:
         if session.scalars(select(Prompt).where(Prompt.name == "system")).first() is None:
             session.add(Prompt(name="system", content=DEFAULT_PROMPT))
