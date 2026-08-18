@@ -28,6 +28,23 @@ Notes:
   direction takes the same framing. Whether the caller actually heard them is
   unconfirmed.
 
+## AI mode (feasibility spike)
+
+Set `PROBE_MODE=ai` and `GEMINI_API_KEY=…` and the same endpoint answers the
+call with Gemini Live instead of echoing: greeting, Hebrew speech in and out,
+server-side VAD for turn taking, and barge-in (queued output is dropped the
+moment the caller starts talking). Every call logs per-turn reply latency and
+both transcripts, and they are stored in the capture's `meta.json`.
+
+Optional: `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `BOT_SYSTEM_PROMPT`,
+`BOT_GREETING`.
+
+Exercise it without a phone call by replaying a recorded caller:
+
+```bash
+python tools/fake_pbx.py --mode replay --replay caller.raw --out reply.wav
+```
+
 The probe never rejects a connection and never assumes an encoding. It accepts
 whatever arrives, records it byte for byte, and reports what it saw.
 
