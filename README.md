@@ -47,6 +47,22 @@ Then open <http://127.0.0.1:8000/> for the capture list.
 | `PROBE_ENFORCE_BEARER` | `0` | Set to `1` only after the protocol is known — rejecting during discovery hides data |
 | `PROBE_CAPTURE_DIR` | `captures` | Where captures are written |
 
+## Deploy on Render
+
+`render.yaml` covers it if the service is created as a Blueprint. For a service
+configured through the dashboard, set:
+
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Health check path: `/healthz`
+
+`.python-version` pins 3.12.7 — Render otherwise defaults to the newest
+interpreter, which often has no wheels for the pinned dependencies.
+
+Captures are written under `PROBE_CAPTURE_DIR`. Without a persistent disk they
+are lost on redeploy, so download anything worth keeping right after the test
+call.
+
 ## Test call procedure
 
 1. Deploy, confirm `/healthz`.
