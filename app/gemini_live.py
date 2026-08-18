@@ -28,10 +28,17 @@ OUTPUT_RATE = 24000
 
 
 class GeminiLiveSession:
-    def __init__(self, api_key: str, system_prompt: str, model: str = DEFAULT_MODEL) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        model: str = DEFAULT_MODEL,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> None:
         self._api_key = api_key
         self._system_prompt = system_prompt
         self._model = model
+        self._tools = tools or []
         self._ws: Any = None
 
     async def __aenter__(self) -> GeminiLiveSession:
@@ -58,6 +65,9 @@ class GeminiLiveSession:
                         "systemInstruction": {"parts": [{"text": self._system_prompt}]},
                         "inputAudioTranscription": {},
                         "outputAudioTranscription": {},
+                        "tools": (
+                            [{"functionDeclarations": self._tools}] if self._tools else []
+                        ),
                         "realtimeInputConfig": {
                             "automaticActivityDetection": {},
                             "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
@@ -99,6 +109,9 @@ class GeminiLiveSession:
             )
         )
 
+    async def send_tool_responses(self, responses: list[dict[str, Any]]) -> None:
+        await self._ws.send(json.dumps({"toolResponse": {"functionResponses": responses}}))
+
     async def events(self) -> AsyncIterator[dict[str, Any]]:
         """Normalised stream of {type: audio|interrupted|turn_complete|transcript}."""
         async for message in self._ws:
@@ -106,6 +119,10 @@ class GeminiLiveSession:
             try:
                 data = json.loads(raw)
             except ValueError:
+                continue
+
+            if calls := (data.get("toolCall") or {}).get("functionCalls"):
+                yield {"type": "tool_call", "calls": calls}
                 continue
 
             server = data.get("serverContent")

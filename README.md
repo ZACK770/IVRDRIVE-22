@@ -36,8 +36,31 @@ server-side VAD for turn taking, and barge-in (queued output is dropped the
 moment the caller starts talking). Every call logs per-turn reply latency and
 both transcripts, and they are stored in the capture's `meta.json`.
 
-Optional: `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `BOT_SYSTEM_PROMPT`,
-`BOT_GREETING`.
+Optional: `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `BOT_GREETING`,
+`BOT_DB_URL` (default `sqlite:///./bot.db`).
+
+## Dispatch layer
+
+The conversation logic lives beside the transport, not inside it, so the wording
+can change without touching the audio path. The system prompt is stored in the
+database and edited at `/admin`; the bridge reads it when the call starts.
+
+Four tools are exposed to the model, all lazy — nothing is loaded at call setup,
+only when the conversation needs it:
+
+| Tool | Purpose |
+|---|---|
+| `get_customer` | Name, preferred pickup address and notes for the caller |
+| `get_recent_call` | The caller's previous call within 10 minutes, so a redial resumes instead of restarting |
+| `lookup_price` | The only source of prices; the prompt forbids inventing one. Matches either direction |
+| `save_order` | Writes the confirmed order |
+
+The caller's number comes from the PBX `start` frame, so identification needs no
+question. Orders are listed at `/admin/orders` and exported at
+`/admin/orders.xlsx`; the price list is managed at `/admin/prices`.
+
+SQLite is the store. On Render it needs a mounted disk, otherwise orders are
+lost on redeploy.
 
 Exercise it without a phone call by replaying a recorded caller:
 
