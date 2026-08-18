@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ivr-driver
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: PROBE_ECHO
+        value: loopback
+      - key: PROBE_CAPTURE_DIR
+        value: /var/data/captures
+    disk:
+      name: captures
+      mountPath: /var/data
+      sizeGB: 1

@@ -1,0 +1,8 @@
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# The probe must never die mid-call: broad excepts around I/O and socket sends
+# are deliberate, since a crash loses the capture we are trying to obtain.
+ignore = ["B008"]
