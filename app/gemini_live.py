@@ -26,12 +26,31 @@ DEFAULT_VOICE = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
 INPUT_RATE = 16000
 OUTPUT_RATE = 24000
 
+#: End-of-turn detection dominates perceived latency: the model cannot start
+#: answering until its VAD decides the caller stopped, and the default wait is
+#: long enough that a mid-sentence pause reads as the end of the turn. 300ms is
+#: short enough to feel conversational and still longer than the pauses inside
+#: a spoken Hebrew sentence.
+SILENCE_MS = int(os.getenv("GEMINI_VAD_SILENCE_MS", "300"))
+#: Audio kept from before speech onset, so a clipped first syllable does not
+#: cost a whole turn in misunderstanding.
+PREFIX_PADDING_MS = int(os.getenv("GEMINI_VAD_PREFIX_MS", "120"))
+START_SENSITIVITY = os.getenv("GEMINI_VAD_START", "START_SENSITIVITY_HIGH")
+END_SENSITIVITY = os.getenv("GEMINI_VAD_END", "END_SENSITIVITY_HIGH")
+
 
 class GeminiLiveSession:
-    def __init__(self, api_key: str, system_prompt: str, model: str = DEFAULT_MODEL) -> None:
+    def __init__(
+        self,
+        api_key: str,
+        system_prompt: str,
+        model: str = DEFAULT_MODEL,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> None:
         self._api_key = api_key
         self._system_prompt = system_prompt
         self._model = model
+        self._tools = tools or []
         self._ws: Any = None
 
     async def __aenter__(self) -> GeminiLiveSession:
@@ -58,8 +77,16 @@ class GeminiLiveSession:
                         "systemInstruction": {"parts": [{"text": self._system_prompt}]},
                         "inputAudioTranscription": {},
                         "outputAudioTranscription": {},
+                        "tools": (
+                            [{"functionDeclarations": self._tools}] if self._tools else []
+                        ),
                         "realtimeInputConfig": {
-                            "automaticActivityDetection": {},
+                            "automaticActivityDetection": {
+                                "startOfSpeechSensitivity": START_SENSITIVITY,
+                                "endOfSpeechSensitivity": END_SENSITIVITY,
+                                "prefixPaddingMs": PREFIX_PADDING_MS,
+                                "silenceDurationMs": SILENCE_MS,
+                            },
                             "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
                         },
                     }
@@ -99,6 +126,9 @@ class GeminiLiveSession:
             )
         )
 
+    async def send_tool_responses(self, responses: list[dict[str, Any]]) -> None:
+        await self._ws.send(json.dumps({"toolResponse": {"functionResponses": responses}}))
+
     async def events(self) -> AsyncIterator[dict[str, Any]]:
         """Normalised stream of {type: audio|interrupted|turn_complete|transcript}."""
         async for message in self._ws:
@@ -106,6 +136,10 @@ class GeminiLiveSession:
             try:
                 data = json.loads(raw)
             except ValueError:
+                continue
+
+            if calls := (data.get("toolCall") or {}).get("functionCalls"):
+                yield {"type": "tool_call", "calls": calls}
                 continue
 
             server = data.get("serverContent")

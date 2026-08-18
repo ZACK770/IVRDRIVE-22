@@ -36,14 +36,63 @@ server-side VAD for turn taking, and barge-in (queued output is dropped the
 moment the caller starts talking). Every call logs per-turn reply latency and
 both transcripts, and they are stored in the capture's `meta.json`.
 
-Optional: `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `BOT_SYSTEM_PROMPT`,
-`BOT_GREETING`.
+Optional: `GEMINI_LIVE_MODEL`, `GEMINI_LIVE_VOICE`, `BOT_GREETING`,
+`BOT_DB_URL` (default `sqlite:///./bot.db`).
+
+## Dispatch layer
+
+The conversation logic lives beside the transport, not inside it, so the wording
+can change without touching the audio path. The system prompt is stored in the
+database and edited at `/admin`; the bridge reads it when the call starts.
+
+Four tools are exposed to the model, all lazy — nothing is loaded at call setup,
+only when the conversation needs it:
+
+| Tool | Purpose |
+|---|---|
+| `get_customer` | Name, preferred pickup address and notes for the caller |
+| `get_recent_call` | The caller's previous call within 10 minutes, so a redial resumes instead of restarting |
+| `lookup_price` | The only source of prices; the prompt forbids inventing one. Matches either direction |
+| `save_order` | Writes the confirmed order |
+
+The caller's number comes from the PBX `start` frame, so identification needs no
+question. Orders are listed at `/admin/orders` and exported at
+`/admin/orders.xlsx`; the price list is managed at `/admin/prices`.
+
+SQLite is the store. On Render it needs a mounted disk, otherwise orders are
+lost on redeploy.
+
+Customers are managed at `/admin/customers`, and every call is listed at
+`/admin/calls` with its transcript, per-turn latencies, turn and interruption
+counts, and the tool calls the model made. Set `ORDER_WEBHOOK_URL` (plus
+`ORDER_WEBHOOK_HEADER` if the receiver needs one, in `Name: value` form) and each
+confirmed order is POSTed as JSON — WhatsApp, Slack or an internal endpoint alike.
+Delivery is best effort and off the call's critical path: a failing webhook is
+logged, never surfaced to the caller.
 
 Exercise it without a phone call by replaying a recorded caller:
 
 ```bash
 python tools/fake_pbx.py --mode replay --replay caller.raw --out reply.wav
 ```
+
+## Cascaded path vs Gemini Live
+
+`tools/cascade_bench.py` times the alternative architecture — STT, then LLM, then
+TTS as three separate requests — against Live on the same utterance:
+
+```bash
+GEMINI_API_KEY=… python tools/cascade_bench.py --wav utterance.wav
+```
+
+On the recorded test call the cascade needed 7.5s end to end (STT 2.8s, LLM 0.6s,
+TTS 4.1s) against 3.5s to first audio from Live. The gap is structural, not a
+matter of model choice: each cascade stage must finish before the next begins,
+and the TTS stage cannot emit a single byte until the whole reply is written,
+whereas Live starts speaking while it is still generating. The cascade's
+advantages are the ones that do not show up in latency — the transcript is
+available as text before the reply, and each stage can be swapped for a
+specialised Hebrew vendor. Keep Live for the phone path.
 
 The probe never rejects a connection and never assumes an encoding. It accepts
 whatever arrives, records it byte for byte, and reports what it saw.

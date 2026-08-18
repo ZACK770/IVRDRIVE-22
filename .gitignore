@@ -3,3 +3,5 @@ __pycache__/
 captures/
 .venv/
 .env
+bot.db
+*.db

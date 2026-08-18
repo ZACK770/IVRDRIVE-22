@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import json
 import logging
 import os
 import time
+from datetime import datetime
 
-from app import audio, capture
+from app import audio, capture, db, tools
 from app.gemini_live import GeminiLiveSession
 
 log = logging.getLogger("bridge")
@@ -27,23 +29,19 @@ SILENCE_FRAME = b"\x00" * FRAME_BYTES
 #: request rate at 10/s instead of 50/s without adding meaningful latency.
 INPUT_BATCH_FRAMES = 5
 
-DEFAULT_PROMPT = os.getenv(
-    "BOT_SYSTEM_PROMPT",
-    "אתה נציג טלפוני של מוקד הסעות בשם 'דרייברים'. "
-    "דבר עברית בלבד, בקצרה ובטבעיות, משפט אחד או שניים בכל תור. "
-    "המטרה שלך היא לאסוף מהלקוח: כתובת מוצא, כתובת יעד, מספר נוסעים ומועד הנסיעה. "
-    "שאל שאלה אחת בכל פעם, ואל תמציא מחירים.",
-)
 GREETING = os.getenv("BOT_GREETING", "ברוך הבא למוקד דרייברים, איך אפשר לעזור?")
 
 
 class CallBridge:
     """Owns one call: PBX audio in, Gemini audio out, at a paced 20ms cadence."""
 
-    def __init__(self, ws, cap: capture.CallCapture, api_key: str) -> None:
+    def __init__(
+        self, ws, cap: capture.CallCapture, api_key: str, caller: str = ""
+    ) -> None:
         self._ws = ws
         self._cap = cap
         self._api_key = api_key
+        self._tools = tools.ToolContext(cap.call_id, caller)
         self._out: collections.deque[bytes] = collections.deque()
         self._carry = b""
         self._partial = b""
@@ -52,9 +50,11 @@ class CallBridge:
         self._last_user_audio: float | None = None
         self._speaking = False
         self.stats: dict[str, object] = {
+            "caller": self._tools.caller,
             "turns": 0,
             "interruptions": 0,
             "reply_latency_ms": [],
+            "tool_calls": [],
             "transcript": [],
         }
 
@@ -131,13 +131,27 @@ class CallBridge:
             elif kind == "transcript":
                 self.stats["transcript"].append(f"{event['who']}: {event['text']}")
                 log.info("[%s] %s: %s", self._cap.call_id, event["who"], event["text"])
+            elif kind == "tool_call":
+                responses = []
+                for call in event["calls"]:
+                    result = self._tools.run(call["name"], call.get("args") or {})
+                    self.stats["tool_calls"].append({"name": call["name"], "result": result})
+                    responses.append(
+                        {"id": call.get("id"), "name": call["name"], "response": result}
+                    )
+                await self._session.send_tool_responses(responses)
             elif kind == "go_away":
                 log.warning("[%s] gemini going away: %s", self._cap.call_id, event["detail"])
 
     # ------------------------------------------------------------------- life
 
     async def run(self) -> None:
-        async with GeminiLiveSession(self._api_key, DEFAULT_PROMPT) as session:
+        prompt = db.get_prompt("system")
+        if self._tools.caller:
+            prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
+        async with GeminiLiveSession(
+            self._api_key, prompt, tools=tools.DECLARATIONS
+        ) as session:
             self._session = session
             if GREETING:
                 await session.send_text(f"אמור עכשיו בדיוק את המשפט הזה: {GREETING}")
@@ -153,3 +167,22 @@ class CallBridge:
             finally:
                 for task in tasks:
                     task.cancel()
+
+    def finish(self) -> None:
+        """Persist the call so a redial within the memory window can resume it."""
+        transcript = "\n".join(self.stats["transcript"])
+        with db.session_scope() as session:
+            session.add(
+                db.CallLog(
+                    call_id=self._cap.call_id,
+                    phone=self._tools.caller,
+                    ended_at=datetime.utcnow(),
+                    transcript=transcript,
+                    stats_json=json.dumps(self.stats, ensure_ascii=False),
+                    summary=(
+                        f"order #{self._tools.saved_order_id}"
+                        if self._tools.saved_order_id
+                        else "no order saved"
+                    ),
+                )
+            )

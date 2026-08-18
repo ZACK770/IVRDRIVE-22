@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app import bridge, capture, codecs
+from app import admin, bridge, capture, codecs, db
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -28,6 +28,12 @@ logging.basicConfig(
 log = logging.getLogger("probe")
 
 app = FastAPI(title="Technoline raw-channel probe")
+app.include_router(admin.router)
+
+
+@app.on_event("startup")
+async def _startup() -> None:
+    db.init_db()
 
 #: off | loopback | tone. Loopback proves the outbound direction works without
 #: needing to know the codec: if the caller hears themselves, our framing is right.
@@ -66,6 +72,15 @@ def _handshake_info(ws: WebSocket) -> dict:
             EXPECTED_BEARER and auth[7:].strip() == EXPECTED_BEARER
         ),
     }
+
+
+def _caller_from_start(text: str) -> str:
+    """The PBX announces the caller in its start frame; anything else is ignored."""
+    try:
+        data = json.loads(text)
+    except Exception:
+        return ""
+    return str(data.get("caller") or "") if isinstance(data, dict) else ""
 
 
 async def _echo_loopback(ws: WebSocket, cap: capture.CallCapture, kind: str, payload) -> None:
@@ -137,8 +152,11 @@ async def _handle(ws: WebSocket) -> None:
 
     call: bridge.CallBridge | None = None
     ai_task: asyncio.Task | None = None
-    if ai_mode:
-        call = bridge.CallBridge(ws, cap, GEMINI_API_KEY)
+
+    def start_ai(caller: str) -> None:
+        """Deferred until the start frame arrives: the caller id shapes the prompt."""
+        nonlocal call, ai_task
+        call = bridge.CallBridge(ws, cap, GEMINI_API_KEY, caller)
         ai_task = asyncio.create_task(call.run())
 
     tone_task = (
@@ -166,8 +184,10 @@ async def _handle(ws: WebSocket) -> None:
             if cap.inbound_frames <= 5 or kind == "text":
                 log.info("[%s] %s", call_id, json.dumps(entry, ensure_ascii=False)[:1200])
 
-            if call is not None:
-                if kind == "binary":
+            if ai_mode:
+                if call is None:
+                    start_ai(_caller_from_start(payload) if kind == "text" else "")
+                elif kind == "binary":
                     call.feed(payload)
                 continue
 
@@ -184,6 +204,7 @@ async def _handle(ws: WebSocket) -> None:
         if ai_task:
             ai_task.cancel()
             if call is not None:
+                call.finish()
                 log.info(
                     "[%s] ai stats: %s",
                     call_id,
