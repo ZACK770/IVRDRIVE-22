@@ -20,7 +20,7 @@ from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app import capture, codecs
+from app import bridge, capture, codecs
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -35,6 +35,9 @@ ECHO_MODE = os.getenv("PROBE_ECHO", "loopback").lower()
 ECHO_DELAY_MS = int(os.getenv("PROBE_ECHO_DELAY_MS", "700"))
 TONE_CODEC = os.getenv("PROBE_TONE_CODEC", "mulaw").lower()
 TONE_EVERY_S = float(os.getenv("PROBE_TONE_EVERY_S", "3"))
+#: probe = record only (protocol discovery). ai = answer the call with Gemini Live.
+MODE = os.getenv("PROBE_MODE", "probe").lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 EXPECTED_BEARER = os.getenv("PROBE_BEARER_SECRET")
 ENFORCE_BEARER = os.getenv("PROBE_ENFORCE_BEARER", "0") == "1"
 
@@ -128,7 +131,21 @@ async def _handle(ws: WebSocket) -> None:
     cap = capture.CallCapture(call_id, info)
     log.info("[%s] connected %s", call_id, json.dumps(info, ensure_ascii=False))
 
-    tone_task = asyncio.create_task(_tone_loop(ws, cap)) if ECHO_MODE == "tone" else None
+    ai_mode = MODE == "ai" and bool(GEMINI_API_KEY)
+    if MODE == "ai" and not GEMINI_API_KEY:
+        log.error("[%s] PROBE_MODE=ai but GEMINI_API_KEY is unset; recording only", call_id)
+
+    call: bridge.CallBridge | None = None
+    ai_task: asyncio.Task | None = None
+    if ai_mode:
+        call = bridge.CallBridge(ws, cap, GEMINI_API_KEY)
+        ai_task = asyncio.create_task(call.run())
+
+    tone_task = (
+        asyncio.create_task(_tone_loop(ws, cap))
+        if ECHO_MODE == "tone" and not ai_mode
+        else None
+    )
     echo_tasks: set[asyncio.Task] = set()
     reason = "unknown"
 
@@ -149,6 +166,11 @@ async def _handle(ws: WebSocket) -> None:
             if cap.inbound_frames <= 5 or kind == "text":
                 log.info("[%s] %s", call_id, json.dumps(entry, ensure_ascii=False)[:1200])
 
+            if call is not None:
+                if kind == "binary":
+                    call.feed(payload)
+                continue
+
             if ECHO_MODE == "loopback":
                 task = asyncio.create_task(_echo_loopback(ws, cap, kind, payload))
                 echo_tasks.add(task)
@@ -159,6 +181,15 @@ async def _handle(ws: WebSocket) -> None:
         reason = f"error: {type(exc).__name__}: {exc}"
         log.exception("[%s] receive loop failed", call_id)
     finally:
+        if ai_task:
+            ai_task.cancel()
+            if call is not None:
+                log.info(
+                    "[%s] ai stats: %s",
+                    call_id,
+                    json.dumps(call.stats, ensure_ascii=False),
+                )
+                cap.extra["ai"] = call.stats
         if tone_task:
             tone_task.cancel()
         for task in list(echo_tasks):
@@ -169,7 +200,12 @@ async def _handle(ws: WebSocket) -> None:
 
 @app.get("/healthz")
 async def healthz() -> dict:
-    return {"status": "ok", "echo_mode": ECHO_MODE}
+    return {
+        "status": "ok",
+        "mode": MODE,
+        "echo_mode": ECHO_MODE,
+        "gemini_key_present": bool(GEMINI_API_KEY),
+    }
 
 
 @app.api_route("/ws/ivr", methods=["GET", "POST"])

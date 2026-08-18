@@ -74,6 +74,8 @@ class CallCapture:
         self.kinds: dict[str, int] = {}
         self.first_text_frames: list[str] = []
         self.closed_reason: str | None = None
+        #: Anything a caller wants recorded alongside the capture, e.g. AI stats.
+        self.extra: dict[str, Any] = {}
         self._last_inbound_ms: float | None = None
         self._frames_file = (self.dir / "frames.jsonl").open("w", encoding="utf-8")
         self._inbound_raw = (self.dir / "inbound.bin").open("wb")
@@ -217,6 +219,7 @@ class CallCapture:
             "first_text_frames": self.first_text_frames,
             "closed_reason": self.closed_reason,
             "codec_verdict": verdict,
+            **self.extra,
         }
 
     def _inferred_frame_ms(
