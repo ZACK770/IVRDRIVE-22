@@ -160,23 +160,46 @@ def customers_delete(customer_id: int) -> RedirectResponse:
     return RedirectResponse("/admin/customers", status_code=303)
 
 
+def _call_cost_usd(stats_json: str | None) -> float:
+    if not stats_json:
+        return 0.0
+    try:
+        stats = json.loads(stats_json)
+    except ValueError:
+        return 0.0
+    usage = stats.get("usage") if isinstance(stats, dict) else None
+    if not isinstance(usage, dict):
+        return 0.0
+    return float(usage.get("cost_usd") or 0.0)
+
+
 @router.get("/calls", response_class=HTMLResponse)
 def calls_page() -> HTMLResponse:
     with db.session_scope() as session:
         rows = session.scalars(
             select(db.CallLog).order_by(db.CallLog.started_at.desc()).limit(100)
         ).all()
+        costs = [_call_cost_usd(r.stats_json) for r in rows]
         listed = "".join(
             f"<tr><td>{r.started_at:%d/%m %H:%M}</td><td>{escape(r.phone or '')}</td>"
-            f"<td>{escape(r.summary or '')}</td>"
+            f"<td>{escape(r.summary or '')}</td><td>${c:.4f}</td>"
             f'<td><a href="/admin/calls/{r.id}">תמליל</a></td></tr>'
-            for r in rows
+            for r, c in zip(rows, costs, strict=True)
         )
+        total = sum(costs)
     return _page(
         "שיחות",
-        f"""<table><tr><th>מתי</th><th>מתקשר</th><th>תוצאה</th><th></th></tr>
+        f"""<p>עלות 100 השיחות האחרונות: <b>${total:.2f}</b> (הערכה לפי מחירון
+        Gemini, מתוך דיווח השימוש של המודל עצמו)</p>
+        <table><tr><th>מתי</th><th>מתקשר</th><th>תוצאה</th><th>עלות</th><th></th></tr>
         {listed}</table>""",
     )
+
+
+def _tokens_text(tokens: object) -> str:
+    if not isinstance(tokens, dict) or not tokens:
+        return "—"
+    return ", ".join(f"{name} {count}" for name, count in sorted(tokens.items()))
 
 
 @router.get("/calls/{call_pk}", response_class=HTMLResponse)
@@ -189,6 +212,7 @@ def call_detail(call_pk: int) -> HTMLResponse:
         transcript = escape(row.transcript or "")
         latencies = stats.get("reply_latency_ms") or []
         tool_calls = stats.get("tool_calls") or []
+        usage = stats.get("usage") or {}
     listed_tools = "".join(
         f"<li>{escape(t.get('name', ''))} ← "
         f"{escape(json.dumps(t.get('result'), ensure_ascii=False))}</li>"
@@ -199,6 +223,9 @@ def call_detail(call_pk: int) -> HTMLResponse:
         f"""<p>מתקשר: {escape(row.phone or '')} — תורים: {stats.get('turns', 0)} —
         קטיעות: {stats.get('interruptions', 0)}</p>
         <p>זמני תגובה (ms): {escape(', '.join(str(x) for x in latencies)) or '—'}</p>
+        <p>עלות משוערת: <b>${float(usage.get('cost_usd') or 0.0):.4f}</b> —
+        טוקנים נכנסים: {escape(_tokens_text(usage.get('input_tokens')))} —
+        יוצאים: {escape(_tokens_text(usage.get('output_tokens')))}</p>
         <h3>כלים שהופעלו</h3><ul>{listed_tools or '<li>אין</li>'}</ul>
         <h3>תמליל</h3><pre style="white-space:pre-wrap">{transcript}</pre>""",
     )

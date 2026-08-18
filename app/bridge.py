@@ -15,7 +15,7 @@ import os
 import time
 from datetime import datetime
 
-from app import audio, capture, db, tools
+from app import audio, capture, cost, db, tools
 from app.gemini_live import GeminiLiveSession
 
 log = logging.getLogger("bridge")
@@ -49,6 +49,7 @@ class CallBridge:
         self._session: GeminiLiveSession | None = None
         self._last_user_audio: float | None = None
         self._speaking = False
+        self._meter = cost.UsageMeter()
         self.stats: dict[str, object] = {
             "caller": self._tools.caller,
             "turns": 0,
@@ -56,6 +57,7 @@ class CallBridge:
             "reply_latency_ms": [],
             "tool_calls": [],
             "transcript": [],
+            "usage": self._meter.snapshot(),
         }
 
     # ------------------------------------------------------------------ input
@@ -140,6 +142,9 @@ class CallBridge:
                         {"id": call.get("id"), "name": call["name"], "response": result}
                     )
                 await self._session.send_tool_responses(responses)
+            elif kind == "usage":
+                self._meter.add(event["usage"])
+                self.stats["usage"] = self._meter.snapshot()
             elif kind == "go_away":
                 log.warning("[%s] gemini going away: %s", self._cap.call_id, event["detail"])
 
@@ -171,6 +176,7 @@ class CallBridge:
     def finish(self) -> None:
         """Persist the call so a redial within the memory window can resume it."""
         transcript = "\n".join(self.stats["transcript"])
+        log.info("[%s] estimated cost $%.4f", self._cap.call_id, self._meter.cost_usd())
         with db.session_scope() as session:
             session.add(
                 db.CallLog(

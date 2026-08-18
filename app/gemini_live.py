@@ -142,6 +142,9 @@ class GeminiLiveSession:
                 yield {"type": "tool_call", "calls": calls}
                 continue
 
+            if usage := data.get("usageMetadata"):
+                yield {"type": "usage", "usage": usage}
+
             server = data.get("serverContent")
             if server is None:
                 if "goAway" in data:
