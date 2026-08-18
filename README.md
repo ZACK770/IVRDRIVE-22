@@ -3,6 +3,31 @@
 Discovers the undocumented wire protocol of the Technoline PBX streaming
 ("raw") channel. One real test call is enough to answer every open question.
 
+## The protocol (captured from a real call, 2026-08-18)
+
+The PBX connects out to our endpoint as a WebSocket client and sends:
+
+1. One **text frame** with call metadata — no auth header is used, the channel
+   token travels in this message:
+
+   ```json
+   {"type": "start", "callId": "5752c0f5…", "caller": "0527180504",
+    "system": "0765673575", "token": "<channel token>",
+    "format": "pcm16;rate=8000;ch=1"}
+   ```
+
+2. Then **raw binary frames**: 320 bytes every 20ms — PCM 16-bit
+   **little-endian**, 8kHz, mono. No JSON wrapping, no base64.
+
+Notes:
+- Silence is a constant sample value of `8`, not `0`. Harmless, but it means
+  "is this silence" cannot be tested with `== 0`, and a naive energy VAD sees a
+  small DC offset.
+- The connection closes with WebSocket code 1006 (abnormal), not a clean 1000.
+- 1323 echoed frames were accepted by the PBX without error, so the outbound
+  direction takes the same framing. Whether the caller actually heard them is
+  unconfirmed.
+
 The probe never rejects a connection and never assumes an encoding. It accepts
 whatever arrives, records it byte for byte, and reports what it saw.
 

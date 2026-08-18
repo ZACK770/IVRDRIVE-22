@@ -34,6 +34,10 @@ def _find_base64_audio(node: Any, path: str = "") -> list[tuple[dict[str, Any], 
             raw = base64.b64decode(node, validate=True)
         except Exception:
             return found
+        # Identifiers (hex call ids, tokens) decode as "valid" base64 too. Only
+        # an even-length payload of at least one 5ms frame can be audio.
+        if len(raw) < 80 or len(raw) % 2:
+            return found
         found.append(
             (
                 {
@@ -73,6 +77,9 @@ class CallCapture:
         self._last_inbound_ms: float | None = None
         self._frames_file = (self.dir / "frames.jsonl").open("w", encoding="utf-8")
         self._inbound_raw = (self.dir / "inbound.bin").open("wb")
+        #: JSON-wrapped audio is kept apart from raw binary frames so a stray
+        #: base64 field can never shift the byte alignment of the real stream.
+        self._inbound_json_raw = (self.dir / "inbound_json.bin").open("wb")
         self._outbound_raw = (self.dir / "outbound.bin").open("wb")
         self._write_meta()
 
@@ -132,7 +139,7 @@ class CallCapture:
                         # binary frames, so JSON-wrapped media still yields a
                         # codec verdict and WAV renderings.
                         largest = max(embedded, key=lambda item: len(item[1]))[1]
-                        self._inbound_raw.write(largest)
+                        self._inbound_json_raw.write(largest)
             if direction == "in" and len(self.first_text_frames) < 10:
                 self.first_text_frames.append(text[:2000])
 
@@ -145,7 +152,12 @@ class CallCapture:
 
     def close(self, reason: str) -> dict[str, Any]:
         self.closed_reason = reason
-        for handle in (self._frames_file, self._inbound_raw, self._outbound_raw):
+        for handle in (
+            self._frames_file,
+            self._inbound_raw,
+            self._inbound_json_raw,
+            self._outbound_raw,
+        ):
             try:
                 handle.close()
             except Exception:
@@ -153,9 +165,17 @@ class CallCapture:
         self._render_audio_candidates()
         return self._write_meta()
 
+    def _audio_source(self) -> Path:
+        """Raw binary frames if any arrived, else audio unwrapped from JSON."""
+        binary = self.dir / "inbound.bin"
+        if binary.exists() and binary.stat().st_size:
+            return binary
+        return self.dir / "inbound_json.bin"
+
     def _render_audio_candidates(self) -> None:
         """Write one WAV per candidate decoding so a human can just listen."""
-        raw = (self.dir / "inbound.bin").read_bytes()
+        source = self._audio_source()
+        raw = source.read_bytes() if source.exists() else b""
         if not raw:
             return
         renderers = {
@@ -173,7 +193,7 @@ class CallCapture:
         duration = round(time.monotonic() - self.started_monotonic, 2)
         common_sizes = sorted(self.frame_sizes.items(), key=lambda kv: -kv[1])[:5]
         verdict = None
-        raw_path = self.dir / "inbound.bin"
+        raw_path = self._audio_source()
         if raw_path.exists() and raw_path.stat().st_size:
             head = raw_path.read_bytes()[: 8000 * 4]
             ranked = codecs.score_candidates(head)
