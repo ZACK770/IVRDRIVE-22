@@ -26,6 +26,18 @@ DEFAULT_VOICE = os.getenv("GEMINI_LIVE_VOICE", "Aoede")
 INPUT_RATE = 16000
 OUTPUT_RATE = 24000
 
+#: End-of-turn detection dominates perceived latency: the model cannot start
+#: answering until its VAD decides the caller stopped, and the default wait is
+#: long enough that a mid-sentence pause reads as the end of the turn. 300ms is
+#: short enough to feel conversational and still longer than the pauses inside
+#: a spoken Hebrew sentence.
+SILENCE_MS = int(os.getenv("GEMINI_VAD_SILENCE_MS", "300"))
+#: Audio kept from before speech onset, so a clipped first syllable does not
+#: cost a whole turn in misunderstanding.
+PREFIX_PADDING_MS = int(os.getenv("GEMINI_VAD_PREFIX_MS", "120"))
+START_SENSITIVITY = os.getenv("GEMINI_VAD_START", "START_SENSITIVITY_HIGH")
+END_SENSITIVITY = os.getenv("GEMINI_VAD_END", "END_SENSITIVITY_HIGH")
+
 
 class GeminiLiveSession:
     def __init__(
@@ -69,7 +81,12 @@ class GeminiLiveSession:
                             [{"functionDeclarations": self._tools}] if self._tools else []
                         ),
                         "realtimeInputConfig": {
-                            "automaticActivityDetection": {},
+                            "automaticActivityDetection": {
+                                "startOfSpeechSensitivity": START_SENSITIVITY,
+                                "endOfSpeechSensitivity": END_SENSITIVITY,
+                                "prefixPaddingMs": PREFIX_PADDING_MS,
+                                "silenceDurationMs": SILENCE_MS,
+                            },
                             "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
                         },
                     }

@@ -8,12 +8,13 @@ actually needs them, which keeps the first response fast.
 from __future__ import annotations
 
 import logging
+import threading
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 
-from app import db
+from app import db, notify
 
 log = logging.getLogger("tools")
 
@@ -80,7 +81,13 @@ class ToolContext:
         self.saved_order_id: int | None = None
 
     def run(self, name: str, args: dict[str, Any]) -> dict[str, Any]:
-        handler = getattr(self, f"_{name}", None)
+        handlers = {
+            "get_customer": self._get_customer,
+            "get_recent_call": self._get_recent_call,
+            "lookup_price": self._lookup_price,
+            "save_order": self._save_order,
+        }
+        handler = handlers.get(name)
         if handler is None:
             return {"error": f"unknown tool {name}"}
         key = f"{name}:{sorted(args.items())}"
@@ -177,4 +184,15 @@ class ToolContext:
             session.add(order)
             session.flush()
             self.saved_order_id = order.id
-            return {"saved": True, "order_id": order.id}
+            payload = {
+                "order_id": order.id,
+                "phone": order.phone,
+                "origin": order.origin,
+                "destination": order.destination,
+                "passengers": order.passengers,
+                "pickup_time": order.pickup_time,
+                "price": order.price,
+            }
+        # Off the call's thread: the caller must not wait on a webhook.
+        threading.Thread(target=notify.send_order, args=(payload,), daemon=True).start()
+        return {"saved": True, "order_id": payload["order_id"]}
