@@ -21,7 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app import admin, api, bridge, capture, codecs, db
+from app import admin, api, bridge, capture, codecs, console_proxy, db
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
@@ -31,6 +31,7 @@ log = logging.getLogger("probe")
 app = FastAPI(title="Technoline raw-channel probe")
 app.include_router(admin.router)
 app.include_router(api.router)
+app.include_router(console_proxy.router)
 
 #: The console runs as a separate Render service on its own domain, so the API
 #: has to name it explicitly. Comma-separated; `*` for local development.
