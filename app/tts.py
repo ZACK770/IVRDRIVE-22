@@ -1,26 +1,34 @@
 """Text-to-speech helper for Hebrew prompts.
 
-Uses gTTS. All generated audio is returned as in-memory MP3 bytes so the
-server can either write files to disk (for the PBX audio library) or upload
-them straight to the PBX.
+Uses Microsoft Edge TTS (edge-tts). All generated audio is returned as
+in-memory MP3 bytes so the server can either write files to disk or upload
+them straight to the PBX audio library.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from io import BytesIO
 
-from gtts import gTTS
+import edge_tts
 
 log = logging.getLogger("tts")
 
+VOICE = "he-IL-AvriNeural"
 
-def synthesize(text: str, *, lang: str = "iw") -> bytes:
+
+def synthesize(text: str) -> bytes:
     """Return an MP3 byte string for the given Hebrew text."""
-    tts = gTTS(text, lang=lang)
-    mp3 = BytesIO()
-    tts.write_to_fp(mp3)
-    return mp3.getvalue()
+    communicate = edge_tts.Communicate(text, voice=VOICE)
+    data = bytearray()
+
+    async def _collect() -> None:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                data.extend(chunk["data"])
+
+    asyncio.run(_collect())
+    return bytes(data)
 
 
 def offer_text(order) -> str:
