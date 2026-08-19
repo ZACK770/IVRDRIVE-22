@@ -283,6 +283,19 @@ async def ws_probe_over_http(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "note": "websocket endpoint"}, status_code=200)
 
 
+AUDIO_DIR = Path(__file__).parent.parent / "audio"
+
+
+@app.get("/audio/{file_name}")
+async def audio_file(file_name: str) -> FileResponse:
+    if ".." in file_name or "/" in file_name or "\\" in file_name:
+        raise HTTPException(status_code=400, detail="bad path")
+    path = AUDIO_DIR / file_name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type="audio/mpeg")
+
+
 @app.get("/api/captures")
 async def api_captures() -> list[dict]:
     return capture.list_captures()

@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app import db, dispatch, loyalty, notify
+from app import db, dispatch, loyalty, notify, pbx, referrals
 
 log = logging.getLogger("tools")
 
@@ -61,7 +61,10 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "save_order",
-        "description": "שמירת ההזמנה בסיום. קרא לזה רק אחרי שהלקוח אישר את הפרטים.",
+        "description": (
+            "שמירת ההזמנה בסיום ופתיחת מכרז לנהגים. קרא לזה רק אחרי שהלקוח אישר את הפרטים. "
+            "אם הלקוח מבקש נהג ספציפי (רכב חדש, נהג מבוגר, בלי סמארטפון וכו'), מלא את tender_filters."
+        ),
         "parameters": {
             "type": "object",
             "properties": {
@@ -71,14 +74,59 @@ DECLARATIONS: list[dict[str, Any]] = [
                 "pickup_time": {"type": "string", "description": "מועד הנסיעה כפי שנמסר"},
                 "price": {"type": "number"},
                 "notes": {"type": "string"},
+                "tender_area": {
+                    "type": "string",
+                    "description": "אזור לצינתוק. ברירת מחדל: מוצא הנסיעה.",
+                },
+                "tender_filters": {
+                    "type": "object",
+                    "description": "סינון נהגים: min_car_year, min_age, min_rating, min_seats, smartphone (true/false), voice_offers (true/false), tiers (['standard','pro','pro_plus','premium'])",
+                    "properties": {
+                        "min_car_year": {"type": "integer"},
+                        "min_seats": {"type": "integer"},
+                        "min_age": {"type": "integer"},
+                        "min_rating": {"type": "number"},
+                        "smartphone": {"type": "boolean"},
+                        "voice_offers": {"type": "boolean"},
+                        "tiers": {"type": "array", "items": {"type": "string"}},
+                    },
+                },
+                "tender_window_seconds": {
+                    "type": "integer",
+                    "description": "כמה שניות להמתין להצעות. ברירת מחדל: 10.",
+                },
             },
             "required": ["origin", "destination", "passengers"],
+        },
+    },
+    {
+        "name": "redeem_order",
+        "description": "מימוש נקודות לתשלום הנסיעה האחרונה שנשמרה בשיחה. לפני זה בדוק get_points.",
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "create_referral",
+        "description": "שיוך מספר טלפון של חבר/ת למבצע שתפו וסעו. שולחת צינתוק לאישור.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "invited_phone": {
+                    "type": "string",
+                    "description": "מספר הטלפון להזמנה",
+                },
+            },
+            "required": ["invited_phone"],
         },
     },
 ]
 
 
-def _open_tender(order_id: int) -> None:
+def _open_tender(
+    order_id: int,
+    area: str | None,
+    filters: dict[str, Any] | None,
+    window_seconds: int | None,
+) -> None:
     """Open the driver auction off the bot's call thread."""
     try:
         with db.session_scope() as session:
@@ -86,7 +134,14 @@ def _open_tender(order_id: int) -> None:
             if order is None:
                 log.warning("order %s not found for auto tender", order_id)
                 return
-            dispatch.open_tender(session, order, actor="bot")
+            dispatch.open_tender(
+                session,
+                order,
+                area=area,
+                filters=filters,
+                window_seconds=window_seconds,
+                actor="bot",
+            )
     except Exception:
         log.exception("auto tender failed for order %s", order_id)
 
@@ -107,6 +162,8 @@ class ToolContext:
             "lookup_price": self._lookup_price,
             "get_points": self._get_points,
             "save_order": self._save_order,
+            "redeem_order": self._redeem_order,
+            "create_referral": self._create_referral,
         }
         handler = handlers.get(name)
         if handler is None:
@@ -213,7 +270,7 @@ class ToolContext:
                 pickup_time=args.get("pickup_time"),
                 price=args.get("price"),
                 notes=args.get("notes"),
-                area=args.get("origin", ""),
+                area=args.get("tender_area") or args.get("origin", ""),
             )
             session.add(order)
             session.flush()
@@ -230,6 +287,70 @@ class ToolContext:
         # The order is now committed; anything that talks to the PBX happens off
         # the bot's call thread so the caller never waits on a ring-out.
         if db.setting_int("auto_tender"):
-            threading.Thread(target=_open_tender, args=(payload["order_id"],), daemon=True).start()
+            filters = args.get("tender_filters")
+            if not isinstance(filters, dict):
+                filters = None
+            window = args.get("tender_window_seconds")
+            if window:
+                try:
+                    window = int(window)
+                except (TypeError, ValueError):
+                    window = None
+            threading.Thread(
+                target=_open_tender,
+                args=(
+                    payload["order_id"],
+                    args.get("tender_area"),
+                    filters,
+                    window,
+                ),
+                daemon=True,
+            ).start()
         threading.Thread(target=notify.send_order, args=(payload,), daemon=True).start()
         return {"saved": True, "order_id": payload["order_id"]}
+
+    def _redeem_order(self, _args: dict[str, Any]) -> dict[str, Any]:
+        order_id = self.saved_order_id
+        if order_id is None:
+            return {"ok": False, "error": "אין הזמנה פעילה לפני הנסיעה האחרונה"}
+        try:
+            with db.session_scope() as session:
+                order = session.get(db.Order, order_id)
+                if order is None:
+                    return {"ok": False, "error": "ההזמנה לא נמצאה"}
+                result = loyalty.redeem_ride(session, order, actor="bot")
+                if result["ok"]:
+                    return {
+                        "ok": True,
+                        "spent": result["spent"],
+                        "remaining": result["remaining"],
+                        "price": order.price,
+                    }
+                return {"ok": False, "error": result.get("error", "אין אפשרות למימוש")}
+        except Exception:
+            log.exception("redeem_order failed for %s", order_id)
+            return {"ok": False, "error": "שגיאה במימוש הנקודות"}
+
+    def _create_referral(self, args: dict[str, Any]) -> dict[str, Any]:
+        invited = db.normalize_phone(args.get("invited_phone") or "")
+        if not invited:
+            return {"ok": False, "error": "מספר הטלפון לא תקין"}
+        try:
+            with db.session_scope() as session:
+                result = referrals.assign(
+                    session,
+                    referrer_phone=self.caller,
+                    invited_phone=invited,
+                    actor="bot",
+                )
+                if result["ok"]:
+                    pbx.flash_call(
+                        invited,
+                        kind="referral",
+                        cid=None,
+                        note=f"referral from {self.caller}",
+                    )
+                return result
+        except Exception:
+            log.exception("create_referral failed: %s -> %s", self.caller, invited)
+            return {"ok": False, "error": "שגיאה ביצירת שיוך"}
