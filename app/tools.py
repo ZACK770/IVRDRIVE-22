@@ -78,6 +78,19 @@ DECLARATIONS: list[dict[str, Any]] = [
 ]
 
 
+def _open_tender(order_id: int) -> None:
+    """Open the driver auction off the bot's call thread."""
+    try:
+        with db.session_scope() as session:
+            order = session.get(db.Order, order_id)
+            if order is None:
+                log.warning("order %s not found for auto tender", order_id)
+                return
+            dispatch.open_tender(session, order, actor="bot")
+    except Exception:
+        log.exception("auto tender failed for order %s", order_id)
+
+
 class ToolContext:
     """Binds tool calls to one call: caller id, call id, and a per-call cache."""
 
@@ -205,10 +218,6 @@ class ToolContext:
             session.add(order)
             session.flush()
             self.saved_order_id = order.id
-            # Ringing the drivers straight off the call is opt-in: most offices
-            # want a dispatcher to see the order first.
-            if db.setting_int("auto_tender"):
-                dispatch.open_tender(session, order, actor="bot")
             payload = {
                 "order_id": order.id,
                 "phone": order.phone,
@@ -218,6 +227,9 @@ class ToolContext:
                 "pickup_time": order.pickup_time,
                 "price": order.price,
             }
-        # Off the call's thread: the caller must not wait on a webhook.
+        # The order is now committed; anything that talks to the PBX happens off
+        # the bot's call thread so the caller never waits on a ring-out.
+        if db.setting_int("auto_tender"):
+            threading.Thread(target=_open_tender, args=(payload["order_id"],), daemon=True).start()
         threading.Thread(target=notify.send_order, args=(payload,), daemon=True).start()
         return {"saved": True, "order_id": payload["order_id"]}

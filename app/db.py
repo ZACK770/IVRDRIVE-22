@@ -483,7 +483,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "public_base_url": os.getenv("PUBLIC_BASE_URL", ""),
     #: Open the bidding automatically when the bot saves an order, instead of
     #: waiting for a dispatcher to press the button.
-    "auto_tender": "0",
+    "auto_tender": "1",
 }
 
 
@@ -540,9 +540,22 @@ def log_action(
     )
 
 
+def ensure_default_settings() -> None:
+    """Seed missing business settings so a fresh or upgraded database has the
+    intended defaults without overwriting values an operator already changed."""
+    with session_scope() as session:
+        for key, value in DEFAULT_SETTINGS.items():
+            if value is None:
+                continue
+            row = session.scalars(select(Setting).where(Setting.key == key)).first()
+            if row is None:
+                session.add(Setting(key=key, value=value))
+
+
 def init_db() -> None:
     Base.metadata.create_all(engine)
     _add_missing_columns()
+    ensure_default_settings()
     with session_scope() as session:
         if session.scalars(select(Prompt).where(Prompt.name == "system")).first() is None:
             session.add(Prompt(name="system", content=DEFAULT_PROMPT))
