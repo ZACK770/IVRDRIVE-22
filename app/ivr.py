@@ -119,6 +119,7 @@ def menu(
 def get_digits(*, min_digits: int = 1, max_digits: int = 10, timeout: int = 8) -> dict:
     return {
         "type": "getDTMF",
+        "name": "dtmf",
         "min_digits": min_digits,
         "max_digits": max_digits,
         "timeout": timeout,
@@ -431,12 +432,16 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
             _save(row, "done", state)
             return message("passenger_redeem_ok" if result["redeemed"] else "passenger_redeem_no")
         if dtmf == "3":
-            _save(row, "refer_number", state)
-            return get_digits(min_digits=9, max_digits=10, timeout=12)
+            _save(row, "refer_prompt", state)
+            return message("passenger_refer_prompt")
         if dtmf == "4":
             _save(row, "done", state)
             return message("passenger_prefs")
         return menu("passenger_menu", keys="1,2,3,4")
+
+    if row.step == "refer_prompt":
+        _save(row, "refer_number", state)
+        return get_digits(min_digits=9, max_digits=10, timeout=12)
 
     if row.step == "refer_number":
         result = referrals.assign(session, caller, dtmf, actor=f"ivr:{caller}")
