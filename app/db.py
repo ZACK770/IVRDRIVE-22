@@ -1,8 +1,9 @@
 """Persistence for the Drivers dispatch bot.
 
-SQLite through SQLAlchemy. One process, one file: the call volume of a single
-dispatch line does not justify anything heavier, and keeping it on disk means a
-Render restart does not lose yesterday's orders (given a mounted disk).
+SQLAlchemy over Postgres in production and SQLite for local runs. Render's
+instance filesystem is ephemeral, so a file database loses every order on
+deploy; point ``BOT_DB_URL`` at the managed Postgres and the models are the
+same either way.
 """
 
 from __future__ import annotations
@@ -22,13 +23,27 @@ from sqlalchemy import (
     Text,
     create_engine,
     func,
+    inspect,
     select,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
-DB_URL = os.getenv("BOT_DB_URL", "sqlite:///./bot.db")
 
-engine = create_engine(DB_URL, future=True)
+def _engine_url(raw: str) -> str:
+    """Render hands out `postgres://…`, which SQLAlchemy 2 rejects, and we ship
+    psycopg 3 rather than the psycopg2 the default dialect expects."""
+    if raw.startswith("postgres://"):
+        raw = "postgresql://" + raw[len("postgres://") :]
+    if raw.startswith("postgresql://"):
+        raw = "postgresql+psycopg://" + raw[len("postgresql://") :]
+    return raw
+
+
+DB_URL = _engine_url(os.getenv("BOT_DB_URL", "sqlite:///./bot.db"))
+
+#: `pool_pre_ping` costs a round trip per checkout but survives Postgres closing
+#: idle connections between calls, which on a quiet dispatch line is the norm.
+engine = create_engine(DB_URL, future=True, pool_pre_ping=True)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False, future=True)
 
 
@@ -71,6 +86,11 @@ class Order(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     exported: Mapped[bool] = mapped_column(Boolean, default=False)
+    #: Lifecycle spine: loyalty points, driver payouts and the rating call all
+    #: hang off the order actually reaching `done`.
+    status: Mapped[str] = mapped_column(String(24), default="new", index=True)
+    driver_name: Mapped[str | None] = mapped_column(String(120))
+    driver_phone: Mapped[str | None] = mapped_column(String(32))
 
 
 class CallLog(Base):
@@ -182,26 +202,27 @@ def set_prompt(name: str, content: str) -> None:
 
 
 def _add_missing_columns() -> None:
-    """Poor man's migration: the schema here only ever grows, and SQLite takes
-    ADD COLUMN cheaply, so a single-file database does not need Alembic."""
+    """Poor man's migration: this schema only ever grows, and both backends take
+    ADD COLUMN cheaply, so it does not yet warrant Alembic."""
+    inspector = inspect(engine)
     with engine.begin() as conn:
         for table in Base.metadata.sorted_tables:
-            existing = {
-                row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table.name})")
-            }
+            existing = {col["name"] for col in inspector.get_columns(table.name)}
             for column in table.columns:
-                if not existing or column.name in existing or not column.nullable:
+                if column.name in existing:
                     continue
-                conn.exec_driver_sql(
-                    f"ALTER TABLE {table.name} ADD COLUMN {column.name} "
-                    f"{column.type.compile(engine.dialect)}"
-                )
+                spec = f"{column.name} {column.type.compile(engine.dialect)}"
+                default = column.default
+                if default is not None and default.is_scalar:
+                    spec += f" DEFAULT {default.arg!r}"
+                elif not column.nullable:
+                    continue
+                conn.exec_driver_sql(f"ALTER TABLE {table.name} ADD COLUMN {spec}")
 
 
 def init_db() -> None:
     Base.metadata.create_all(engine)
-    if engine.dialect.name == "sqlite":
-        _add_missing_columns()
+    _add_missing_columns()
     with session_scope() as session:
         if session.scalars(select(Prompt).where(Prompt.name == "system")).first() is None:
             session.add(Prompt(name="system", content=DEFAULT_PROMPT))

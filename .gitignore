@@ -5,3 +5,5 @@ captures/
 .env
 bot.db
 *.db
+node_modules/
+web/dist/
