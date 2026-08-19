@@ -250,6 +250,71 @@ def list_tenders(limit: int = 50) -> dict:
         }
 
 
+@router.get("/tenders/{tender_id}")
+def get_tender(tender_id: int) -> dict:
+    """Full auction snapshot: who was rung, who bid, with what score, and who won."""
+    with db.session_scope() as session:
+        tender = session.get(db.Tender, tender_id)
+        if tender is None:
+            raise HTTPException(status_code=404, detail="no such tender")
+        order = session.get(db.Order, tender.order_id)
+        bids = session.scalars(
+            select(db.TenderBid).where(db.TenderBid.tender_id == tender_id)
+        ).all()
+        calls = session.scalars(
+            select(db.FlashCall).where(db.FlashCall.tender_id == tender_id)
+        ).all()
+        driver_ids = {b.driver_id for b in bids} | {f.driver_id for f in calls if f.driver_id}
+        drivers_by_id = {}
+        if driver_ids:
+            for d in session.scalars(select(db.Driver).where(db.Driver.id.in_(driver_ids))):
+                drivers_by_id[d.id] = d
+        return {
+            "tender": {
+                "id": tender.id,
+                "order_id": tender.order_id,
+                "area": tender.area,
+                "status": tender.status,
+                "opened_at": tender.opened_at.isoformat() if tender.opened_at else None,
+                "closes_at": tender.closes_at.isoformat() if tender.closes_at else None,
+                "awarded_driver_id": tender.awarded_driver_id,
+                "notified": tender.notified,
+                "filters": drivers.parse_filters(tender.filters_json),
+            },
+            "order": {
+                "id": order.id,
+                "phone": order.phone,
+                "origin": order.origin,
+                "destination": order.destination,
+                "price": order.price,
+                "status": order.status,
+            } if order else None,
+            "bids": [
+                {
+                    "driver_id": b.driver_id,
+                    "driver_name": drivers_by_id.get(b.driver_id, db.Driver()).name,
+                    "driver_phone": drivers_by_id.get(b.driver_id, db.Driver()).phone,
+                    "score": b.score,
+                    "won": b.won,
+                    "created_at": b.created_at.isoformat() if b.created_at else None,
+                }
+                for b in bids
+            ],
+            "called": [
+                {
+                    "driver_id": c.driver_id,
+                    "driver_name": drivers_by_id.get(c.driver_id, db.Driver()).name if c.driver_id else None,
+                    "phone": c.phone,
+                    "cid": c.cid,
+                    "status": c.status,
+                    "note": c.note,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                }
+                for c in calls
+            ],
+        }
+
+
 @router.post("/tenders/{tender_id}/bid")
 def bid(tender_id: int, payload: Payload) -> dict:
     """A bid placed for a driver by the dispatcher — the phone path goes

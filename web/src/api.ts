@@ -307,6 +307,27 @@ export const api = {
     body: { area?: string; filters?: TenderFilters; window_seconds?: number },
   ) => write<{ eligible: number; flash: number; voice: number }>(`/api/orders/${orderId}/tender`, body),
   tenders: () => request<{ tenders: Tender[] }>("/api/tenders").then((r) => r.tenders),
+  tender: (id: number) => request<{
+    tender: Tender;
+    order: Order | null;
+    bids: {
+      driver_id: number;
+      driver_name: string | null;
+      driver_phone: string;
+      score: number;
+      won: boolean;
+      created_at: string;
+    }[];
+    called: {
+      driver_id: number | null;
+      driver_name: string | null;
+      phone: string;
+      cid: string | null;
+      status: string;
+      note: string | null;
+      created_at: string;
+    }[];
+  }>(`/api/tenders/${id}`),
   closeTender: (id: number) => write<{ ok: boolean }>(`/api/tenders/${id}/close`, {}),
   cancelTender: (id: number) => write<{ ok: boolean }>(`/api/tenders/${id}/cancel`, {}),
   finishOrder: (id: number) => write<{ ok: boolean }>(`/api/orders/${id}/finish`, {}),
@@ -370,6 +391,10 @@ export const api = {
   calls: () => request<{ calls: Call[] }>("/api/calls").then((r) => r.calls),
   call: (id: number) => request<CallDetail>(`/api/calls/${id}`),
   prices: () => request<{ prices: Price[] }>("/api/prices").then((r) => r.prices),
+  savePrice: (price: { id?: number; origin: string; destination: string; price: number }) =>
+    write<{ id: number }>("/api/prices", price).then((r) => r.id),
+  deletePrice: (id: number) =>
+    request<{ ok: boolean }>(`/api/prices/${id}`, { method: "DELETE" }).then((r) => r.ok),
   customers: () =>
     request<{ customers: Customer[] }>("/api/customers").then((r) => r.customers),
   prompt: () => request<{ content: string }>("/api/prompt").then((r) => r.content),

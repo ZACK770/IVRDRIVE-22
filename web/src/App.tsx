@@ -335,17 +335,83 @@ function Calls() {
 
 function Prices() {
   const load = useCallback(() => api.prices(), []);
-  const { data, error } = usePoll<Price[]>(load, 60);
+  const { data, error, refresh } = usePoll<Price[]>(load, 60);
+  const [form, setForm] = useState({ origin: "", destination: "", price: "" });
+  const [note, setNote] = useState("");
+
+  const submit = () => {
+    if (!form.origin.trim() || !form.destination.trim() || !form.price) {
+      setNote("מוצא, יעד ומחיר חובה");
+      return;
+    }
+    api
+      .savePrice({
+        origin: form.origin,
+        destination: form.destination,
+        price: Number(form.price),
+      })
+      .then(() => {
+        setForm({ origin: "", destination: "", price: "" });
+        setNote("נשמר");
+        refresh();
+      })
+      .catch((err: Error) => setNote(err.message));
+  };
+
+  const remove = (id: number) => {
+    api
+      .deletePrice(id)
+      .then((ok) => {
+        if (ok) {
+          setNote("נמחק");
+          refresh();
+        }
+      })
+      .catch((err: Error) => setNote(err.message));
+  };
+
   return (
     <>
       <h1>מחירון</h1>
       {error && <div className="error">{error}</div>}
+      {note && <div className="muted">{note}</div>}
+      <div className="panel">
+        <h2>הוספת מחיר</h2>
+        <div className="grid">
+          <label>
+            מוצא
+            <input
+              value={form.origin}
+              onChange={(e) => setForm({ ...form, origin: e.target.value })}
+            />
+          </label>
+          <label>
+            יעד
+            <input
+              value={form.destination}
+              onChange={(e) => setForm({ ...form, destination: e.target.value })}
+            />
+          </label>
+          <label>
+            מחיר
+            <input
+              type="number"
+              value={form.price}
+              onChange={(e) => setForm({ ...form, price: e.target.value })}
+            />
+          </label>
+        </div>
+        <button className="action" onClick={submit}>
+          שמור
+        </button>
+      </div>
       <table>
         <thead>
           <tr>
             <th>מוצא</th>
             <th>יעד</th>
             <th>מחיר</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -354,6 +420,9 @@ function Prices() {
               <td>{price.origin}</td>
               <td>{price.destination}</td>
               <td>{price.price.toFixed(0)} ₪</td>
+              <td>
+                <button onClick={() => remove(price.id)}>מחק</button>
+              </td>
             </tr>
           ))}
         </tbody>

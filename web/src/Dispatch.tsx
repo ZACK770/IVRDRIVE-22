@@ -47,6 +47,8 @@ export function Tenders() {
   const [seconds, setSeconds] = useState("");
   const [filters, setFilters] = useState<TenderFilters>({});
   const [note, setNote] = useState("");
+  const [detail, setDetail] = useState<any>(null);
+  const [detailError, setDetailError] = useState("");
 
   const open = () =>
     api
@@ -160,6 +162,16 @@ export function Tenders() {
               <td data-label="סטטוס">{TENDER_STATUS[tender.status] ?? tender.status}</td>
               <td data-label="נהג זוכה">{tender.awarded_driver_id ?? "—"}</td>
               <td>
+                <button
+                  onClick={() =>
+                    api
+                      .tender(tender.id)
+                      .then(setDetail)
+                      .catch((err: Error) => setDetailError(err.message))
+                  }
+                >
+                  פרטים
+                </button>
                 {tender.status === "open" && (
                   <>
                     <button onClick={() => api.closeTender(tender.id).then(refresh)}>
@@ -175,6 +187,61 @@ export function Tenders() {
           ))}
         </tbody>
       </table>
+
+      {detailError && <div className="error">{detailError}</div>}
+      {detail && (
+        <div className="panel">
+          <h2>פרטי מכרז #{detail.tender.id}</h2>
+          <p className="muted">
+            הזמנה #{detail.tender.order_id} | אזור {detail.tender.area ?? "—"} | סטטוס{" "}
+            {detail.tender.status}
+          </p>
+
+          <h3>צינתוקים שנשלחו ({detail.called.length})</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>נהג</th>
+                <th>טלפון</th>
+                <th>סטטוס</th>
+                <th>מזהה שיחה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.called.map((c: any, idx: number) => (
+                <tr key={idx}>
+                  <td>{c.driver_name ?? "—"}</td>
+                  <td>{c.phone}</td>
+                  <td>{c.status}</td>
+                  <td>{c.cid ?? "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <h3>הצעות שהתקבלו ({detail.bids.length})</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>נהג</th>
+                <th>טלפון</th>
+                <th>ציון</th>
+                <th>זוכה</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.bids.map((b: any) => (
+                <tr key={b.driver_id}>
+                  <td>{b.driver_name ?? "—"}</td>
+                  <td>{b.driver_phone}</td>
+                  <td>{b.score.toFixed(1)}</td>
+                  <td>{b.won ? "כן" : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </>
   );
 }
