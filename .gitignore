@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 captures/
+audio/
 .venv/
 .env
 bot.db

@@ -85,10 +85,12 @@ def message(key: str, **extra: Any) -> dict:
     return {"type": "simpleMessage", "fileName": audio(key), **extra}
 
 
-def menu(key: str, *, digits: int = 1, tries: int = 3, timeout: int = 5) -> dict:
+def menu(
+    key: str, *, digits: int = 1, tries: int = 3, timeout: int = 5, file_name: str | None = None
+) -> dict:
     return {
         "type": "simpleMenu",
-        "fileName": audio(key),
+        "fileName": file_name or audio(key),
         "min_digits": 1,
         "max_digits": digits,
         "tries": tries,
@@ -206,7 +208,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
             order = session.get(db.Order, tender.order_id)
             state.update({"tender": tender.id, "order": order.id if order else None})
             _save(row, "offer", state)
-            return menu("driver_offer")
+            return menu("driver_offer", file_name=tender.offer_audio)
         _save(row, "menu", state)
         return menu("driver_menu")
 

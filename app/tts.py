@@ -1,0 +1,71 @@
+"""Text-to-speech helper for Hebrew prompts.
+
+Uses gTTS. All generated audio is returned as in-memory MP3 bytes so the
+server can either write files to disk (for the PBX audio library) or upload
+them straight to the PBX.
+"""
+
+from __future__ import annotations
+
+import logging
+from io import BytesIO
+
+from gtts import gTTS
+
+log = logging.getLogger("tts")
+
+
+def synthesize(text: str, *, lang: str = "iw") -> bytes:
+    """Return an MP3 byte string for the given Hebrew text."""
+    tts = gTTS(text, lang=lang)
+    mp3 = BytesIO()
+    tts.write_to_fp(mp3)
+    return mp3.getvalue()
+
+
+def offer_text(order) -> str:
+    """The announcement a driver hears when bidding on a ride."""
+    parts = [
+        "התקבלה הצעת נסיעה.",
+        f"מוצא: {order.origin or 'לא ידוע'}.",
+        f"יעד: {order.destination or 'לא ידוע'}.",
+    ]
+    if order.price:
+        parts.append(f"מחיר: {order.price:.0f} שקלים.")
+    if order.pickup_time:
+        parts.append(f"מועד איסוף: {order.pickup_time}.")
+    parts.append("אם אתה מעוניין בנסיעה, הקש 1.")
+    return " ".join(parts)
+
+
+#: Prompts for the static PBX audio library. The key is the logical name used
+#: in the code; the file written to disk is the PBX audio-library name, which
+#: defaults to the value in ``app/ivr.DEFAULT_AUDIO``.
+AUDIO_TEXTS: dict[str, str] = {
+    "driver_menu": "שלום למערכת דרייברים. להצעת נסיעה חדשה הקש 1. למוניטין שלך הקש 2. לעדכון אזורים הקש 3. לשעות שקט הקש 4. לעדכון מיקום הקש 5. לסיום נסיעה הקש 6.",
+    "driver_register": "כדי להירשם כנהג, הקש 1 ולאחר מכן תועבר להשלמת פרטים.",
+    "driver_saved": "הפרטים נשמרו. תודה.",
+    "driver_pending": "הרישום שלך ממתין לאישור המשרד. תוכל לחזור מאוחר יותר.",
+    "driver_offer": "התקבלה הצעת נסיעה באזור שלך. אם אתה מעוניין, הקש 1.",
+    "driver_wait": "ההצעה נשמרה. המערכת בודקת את כל ההצעות. אם תזכה, תחובר מיד לנוסע.",
+    "driver_taken": "מצטערים, הנסיעה כבר נתפסה על ידי נהג אחר.",
+    "driver_no_offer": "כרגע אין הצעה פתוחה בשטח. נסה שוב מאוחר יותר.",
+    "driver_connecting": "מזל טוב, זכית בנסיעה. מחבר אותך עכשיו לנוסע.",
+    "driver_reputation": "המוניטין שלך נבנה מדירוגי נוסעים, ותק, גיל, רכב וכמות נסיעות. לפרטים פרטיים תקבל הודעת טקסט.",
+    "driver_area_prompt": "הקש את מספר האזור שבו תרצה לקבל הצעות.",
+    "driver_quiet_prompt": "הגדר שעות שקט. הקש את שעת ההתחלה בשתי ספרות.",
+    "driver_location_prompt": "הקש את מספר האזור שבו אתה נמצא כרגע.",
+    "driver_location_done": "המיקום נשמר. תודה.",
+    "driver_finish_done": "הנסיעה סומנה כבוצעה. ניקוד, דירוג ועמלה יעודכנו אוטומטית.",
+    "passenger_menu": "שלום למוקד דרייברים. לבדיקת יתרת נקודות הקש 1. למימוש נסיעה חינם הקש 2. למבצע שתפו וסעו הקש 3. לעדכון העדפות הקש 4.",
+    "passenger_balance": "יתרת הנקודות שלך נבדקת ותשלח אליך בהודעת טקסט. תודה.",
+    "passenger_redeem_ok": "יש לך מספיק נקודות. הנסיעה הזאת תחוייב באפס שקלים.",
+    "passenger_redeem_no": "אין מספיק נקודות לנסיעה חינם, או שאין הזמנה פתוחה.",
+    "passenger_refer_prompt": "הקש את מספר הטלפון שברצונך לשייך למבצע שתפו וסעו.",
+    "passenger_refer_ok": "המספר נשמר. צינתוק אישור נשלח אליו. החיוג חייב להתבצע תוך 24 שעות.",
+    "passenger_refer_no": "לא ניתן לשייך את המספר. ייתכן שהוא כבר משויך או לא תקין.",
+    "passenger_prefs": "ההעדפות נשמרו. תודה.",
+    "rating_prompt": "שלום, אנו מעריכים את דעתך. אנא דרג את הנהג בין 1 ל-5, כאשר 5 הוא מעולה.",
+    "rating_thanks": "תודה על הדירוג. יום נעים.",
+    "error": "אירעה תקלה. נסה שוב מאוחר יותר.",
+}

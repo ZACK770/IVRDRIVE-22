@@ -210,6 +210,8 @@ class Tender(Base):
     #: The dispatcher's selection filters, kept so the same tender can be
     #: replayed or re-blasted without re-entering them.
     filters_json: Mapped[str | None] = mapped_column(Text)
+    #: Name of the uploaded TTS file in the PBX audio library.
+    offer_audio: Mapped[str | None] = mapped_column(String(120))
     notified: Mapped[int] = mapped_column(Integer, default=0)
 
 

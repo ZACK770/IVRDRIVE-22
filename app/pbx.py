@@ -192,3 +192,28 @@ def campaign_report(campaign_id: str) -> dict:
 
 def stop_campaign(campaign_id: str) -> dict:
     return _request("campaignStop", {"campaignId": campaign_id}, endpoint="campaignApi.php")
+
+
+def upload_file(file_name: str, data: bytes, *, mime: str = "audio/mpeg") -> dict:
+    """Upload an audio file to the PBX audio library so it can be referenced by
+    name from a Module API response. Dry-run just logs the byte size.
+    """
+    if DRY_RUN:
+        log.info("pbx upload dry-run: %s (%s bytes)", file_name, len(data))
+        return {"status": "OK", "dry_run": True, "fileName": file_name}
+    if not API_KEY:
+        raise PbxError("upload_file: PBX_API_KEY is required")
+    try:
+        response = httpx.post(
+            f"{BASE_URL}/ivrFilesApi.php",
+            data={"action": "uploadFile", "apiKey": API_KEY, "fileName": file_name},
+            files={"file": (f"{file_name}.mp3", data, mime)},
+            timeout=TIMEOUT_S,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise PbxError(f"upload_file: {exc}") from exc
+    if not _ok(payload):
+        raise PbxError(f"upload_file: {payload.get('note') or payload}")
+    return payload
