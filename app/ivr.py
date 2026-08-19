@@ -82,6 +82,9 @@ def audio(key: str) -> str:
 
 
 def message(key: str, **extra: Any) -> dict:
+    text = tts.AUDIO_TEXTS.get(key)
+    if text:
+        return {"type": "simpleMessage", "files": [{"text": text}], **extra}
     return {"type": "simpleMessage", "fileName": audio(key), **extra}
 
 
@@ -209,6 +212,9 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
     state = _state(row)
     dtmf = params["dtmf"]
     driver = drivers.get_by_phone(session, caller)
+
+    if row.step == "done":
+        return hangup()
 
     # A driver who was rung about a ride gets the offer immediately; the
     # callback is the answer to the flash call, not a visit to the menu.
@@ -396,6 +402,9 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
     row = _session_row(session, params["call_id"] or caller, caller)
     state = _state(row)
     dtmf = params["dtmf"]
+
+    if row.step == "done":
+        return hangup()
 
     if row.step == "start":
         # Ringing in is how an invited number confirms its referral, so this
