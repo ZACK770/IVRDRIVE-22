@@ -4,3 +4,4 @@ websockets==14.1
 sqlalchemy==2.0.52
 openpyxl==3.1.5
 python-multipart==0.0.20
+psycopg[binary]==3.2.3

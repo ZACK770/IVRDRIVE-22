@@ -127,6 +127,21 @@ python tools/fake_pbx.py --mode binary-mulaw   # or binary-pcm16le / json-base64
 
 Then open <http://127.0.0.1:8000/> for the capture list.
 
+The dispatcher console is a separate app under `web/`:
+
+```bash
+cd web && npm install && npm run dev    # http://127.0.0.1:5173, /api proxied to :8000
+```
+
+## Two services, one repository
+
+The backend answers the phone; the console is a static React bundle that talks
+to it over `/api`. They deploy as separate Render services with `buildFilter`
+rules, so a console commit never rebuilds the phone line and a backend commit
+ships in seconds without waiting for npm. The console reaches the backend via
+`VITE_API_BASE`, baked in at build time, and the backend must list the console's
+domain in `CONSOLE_ORIGINS`.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -137,6 +152,9 @@ Then open <http://127.0.0.1:8000/> for the capture list.
 | `PROBE_BEARER_SECRET` | unset | Expected Bearer value; only reported, not enforced |
 | `PROBE_ENFORCE_BEARER` | `0` | Set to `1` only after the protocol is known — rejecting during discovery hides data |
 | `PROBE_CAPTURE_DIR` | `captures` | Where captures are written |
+| `BOT_DB_URL` | `sqlite:///./bot.db` | Postgres URL in production; `postgres://` and `postgresql://` are rewritten onto psycopg 3 |
+| `ADMIN_TOKEN` | unset | Required as `X-Admin-Token` on writing API calls; unset leaves the API open for local work |
+| `CONSOLE_ORIGINS` | `*` | Comma-separated origins allowed by CORS — the console's Render domain |
 
 ## Deploy on Render
 
