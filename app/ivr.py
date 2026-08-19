@@ -32,7 +32,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import db, dispatch, drivers, loyalty, pbx, ratings, referrals
+from app import db, dispatch, drivers, loyalty, pbx, ratings, referrals, tts
 
 log = logging.getLogger("ivr")
 
@@ -86,15 +86,30 @@ def message(key: str, **extra: Any) -> dict:
 
 
 def menu(
-    key: str, *, digits: int = 1, tries: int = 3, timeout: int = 5, file_name: str | None = None
+    key: str,
+    *,
+    keys: str | None = None,
+    tries: int = 3,
+    timeout: int = 5,
+    file_name: str | None = None,
+    text: str | None = None,
 ) -> dict:
+    """Return a simpleMenu module per the Technoline Module API spec."""
+    if file_name:
+        files = [{"fileName": file_name}]
+    elif text:
+        files = [{"text": text}]
+    elif key in tts.AUDIO_TEXTS:
+        files = [{"text": tts.AUDIO_TEXTS[key]}]
+    else:
+        files = [{"fileName": audio(key)}]
     return {
         "type": "simpleMenu",
-        "fileName": file_name or audio(key),
-        "min_digits": 1,
-        "max_digits": digits,
-        "tries": tries,
+        "name": "dtmf",
+        "enabledKeys": keys,
+        "times": tries,
         "timeout": timeout,
+        "files": files,
     }
 
 
@@ -200,7 +215,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
     if row.step == "start":
         if driver is None:
             _save(row, "register_car_year", state)
-            return menu("driver_register")
+            return menu("driver_register", keys="1")
         if driver.status != "active":
             return message("driver_pending")
         tender = dispatch.latest_tender_for_driver(session, driver)
@@ -208,18 +223,18 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
             order = session.get(db.Order, tender.order_id)
             state.update({"tender": tender.id, "order": order.id if order else None})
             _save(row, "offer", state)
-            return menu("driver_offer", file_name=tender.offer_audio)
+            return menu("driver_offer", keys="1", file_name=tender.offer_audio)
         _save(row, "menu", state)
-        return menu("driver_menu")
+        return menu("driver_menu", keys="1,2,3,4,5,6")
 
     if row.step == "offer":
         tender = session.get(db.Tender, int(state.get("tender") or 0))
         if tender is None:
             _save(row, "menu", state)
-            return menu("driver_menu")
+            return menu("driver_menu", keys="1,2,3,4,5,6")
         if dtmf != "1":
             _save(row, "menu", state)
-            return menu("driver_menu")
+            return menu("driver_menu", keys="1,2,3,4,5,6")
         result = dispatch.place_bid(session, tender, driver)
         if not result.get("ok"):
             _save(row, "done", state)
@@ -294,7 +309,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         return message("driver_location_done" if result["ok"] else "error")
 
     _save(row, "menu", state)
-    return menu("driver_menu")
+    return menu("driver_menu", keys="1,2,3,4,5,6")
 
 
 def _driver_menu_choice(
@@ -309,19 +324,19 @@ def _driver_menu_choice(
             return message("driver_no_offer")
         state["tender"] = tender.id
         _save(row, "offer", state)
-        return menu("driver_offer")
+        return menu("driver_offer", keys="1", file_name=tender.offer_audio)
     if dtmf == "2":  # reputation
         _save(row, "done", state)
         return message("driver_reputation")
     if dtmf == "3":  # preferred areas
         _save(row, "area_choice", state)
-        return menu("driver_area_prompt", digits=2)
+        return menu("driver_area_prompt", keys="1,2,3,4,5,6,7,8,9")
     if dtmf == "4":  # quiet hours
         _save(row, "quiet_from", state)
         return get_digits(min_digits=2, max_digits=2)
     if dtmf == "5":  # location update
         _save(row, "location_choice", state)
-        return menu("driver_location_prompt", digits=2)
+        return menu("driver_location_prompt", keys="1,2,3,4,5,6,7,8,9")
     if dtmf == "6":  # ride finished
         order = session.scalars(
             select(db.Order)
@@ -335,7 +350,7 @@ def _driver_menu_choice(
         dispatch.finish_ride(session, order)
         _save(row, "done", state)
         return message("driver_finish_done")
-    return menu("driver_menu")
+    return menu("driver_menu", keys="1,2,3,4,5,6")
 
 
 def _hour(value: object) -> int | None:
@@ -387,7 +402,7 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
         # happens before any menu and regardless of what the caller wanted.
         referrals.confirm_by_call(session, caller)
         _save(row, "menu", state)
-        return menu("passenger_menu")
+        return menu("passenger_menu", keys="1,2,3,4")
 
     if row.step == "menu":
         if dtmf == "1":
@@ -412,7 +427,7 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
         if dtmf == "4":
             _save(row, "done", state)
             return message("passenger_prefs")
-        return menu("passenger_menu")
+        return menu("passenger_menu", keys="1,2,3,4")
 
     if row.step == "refer_number":
         result = referrals.assign(session, caller, dtmf, actor=f"ivr:{caller}")
@@ -425,7 +440,7 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
         return message("passenger_refer_ok")
 
     _save(row, "menu", state)
-    return menu("passenger_menu")
+    return menu("passenger_menu", keys="1,2,3,4")
 
 
 # -------------------------------------------------------------- rating line
@@ -455,7 +470,7 @@ def _rating_step(session: Session, params: dict[str, str]) -> dict:
 
     if row.step == "start" or not dtmf:
         _save(row, "score", state)
-        return menu("rating_prompt")
+        return menu("rating_prompt", keys="1,2,3,4,5")
 
     rating = (
         session.get(db.RatingRequest, int(state["rating"]))
@@ -479,7 +494,7 @@ def _rating_step(session: Session, params: dict[str, str]) -> dict:
     try:
         score = int(dtmf[:1])
     except ValueError:
-        return menu("rating_prompt")
+        return menu("rating_prompt", keys="1,2,3,4,5")
     ratings.record_score(session, rating, score)
     _save(row, "done", state)
     return message("rating_thanks")
