@@ -9,16 +9,38 @@ from __future__ import annotations
 import io
 import json
 from datetime import datetime
+from hmac import compare_digest
 from html import escape
+from typing import Annotated
 
-from fastapi import APIRouter, Form, Response
+from fastapi import APIRouter, Depends, Form, HTTPException, Response
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from openpyxl import Workbook
 from sqlalchemy import select
 
 from app import db
+from app.api import ADMIN_TOKEN
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+_basic = HTTPBasic(auto_error=False)
+
+
+def require_admin(
+    credentials: Annotated[HTTPBasicCredentials | None, Depends(_basic)] = None,
+) -> None:
+    """These pages are plain browser navigation, so the token travels as a Basic
+    password (any user name) rather than the header the JSON API uses."""
+    if not ADMIN_TOKEN:
+        return
+    if credentials is None or not compare_digest(credentials.password, ADMIN_TOKEN):
+        raise HTTPException(
+            status_code=401,
+            detail="admin token required",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+
+
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 _PAGE = """<!doctype html>
 <html lang="he" dir="rtl"><head><meta charset="utf-8">

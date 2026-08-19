@@ -12,12 +12,10 @@ import os
 from datetime import datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Header, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy import select
 
 from app import db
-
-router = APIRouter(prefix="/api", tags=["api"])
 
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
@@ -30,6 +28,11 @@ def require_token(x_admin_token: Annotated[str | None, Header()] = None) -> None
     """Open when `ADMIN_TOKEN` is unset, so local development needs no setup."""
     if ADMIN_TOKEN and x_admin_token != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="bad token")
+
+
+#: Reads carry caller phone numbers and transcripts, so they are as sensitive
+#: as the writes; the guard belongs on the router rather than per endpoint.
+router = APIRouter(prefix="/api", tags=["api"], dependencies=[Depends(require_token)])
 
 
 def _order_json(row: db.Order) -> dict:
@@ -69,12 +72,7 @@ def list_orders(limit: int = 200) -> dict:
 
 
 @router.patch("/orders/{order_id}")
-def update_order(
-    order_id: int,
-    payload: Annotated[dict, Body()],
-    x_admin_token: Annotated[str | None, Header()] = None,
-) -> dict:
-    require_token(x_admin_token)
+def update_order(order_id: int, payload: Annotated[dict, Body()]) -> dict:
     status = payload.get("status")
     if status is not None and status not in ORDER_STATUSES:
         raise HTTPException(status_code=422, detail=f"status must be one of {ORDER_STATUSES}")
@@ -201,11 +199,7 @@ def get_prompt() -> dict:
 
 
 @router.put("/prompt")
-def put_prompt(
-    payload: Annotated[dict, Body()],
-    x_admin_token: Annotated[str | None, Header()] = None,
-) -> dict:
-    require_token(x_admin_token)
+def put_prompt(payload: Annotated[dict, Body()]) -> dict:
     content = payload.get("content")
     if not isinstance(content, str) or not content.strip():
         raise HTTPException(status_code=422, detail="content required")
