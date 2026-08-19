@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { Accounting } from "./Accounting";
+import { Club } from "./Club";
+import { AreaBoard, Tenders } from "./Dispatch";
+import { Drivers } from "./Drivers";
+import { Settings } from "./Settings";
+import { clock, usePoll } from "./usePoll";
 import {
+  actorStore,
   api,
   tokenStore,
   type Call,
@@ -14,10 +21,16 @@ import "./styles.css";
 
 const TABS = {
   board: "לוח סדרן",
+  areas: "נהגים באזור",
+  tenders: "מכרזים",
+  drivers: "נהגים",
+  club: "מועדון נוסעים",
+  accounting: "הנהלת חשבונות",
   calls: "שיחות",
   prices: "מחירון",
   customers: "לקוחות",
   prompt: "פרומפט",
+  settings: "הגדרות",
 } as const;
 
 type Tab = keyof typeof TABS;
@@ -29,38 +42,6 @@ const STATUS_LABEL: Record<OrderStatus, string> = {
   done: "בוצעה",
   cancelled: "בוטלה",
 };
-
-const clock = (iso: string) =>
-  new Date(iso).toLocaleString("he-IL", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-/** Polling beats a websocket here: the board is one small query and the
- *  dispatcher tolerates five seconds of staleness. */
-function usePoll<T>(load: () => Promise<T>, seconds: number) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<string>("");
-
-  const refresh = useCallback(() => {
-    load()
-      .then((value) => {
-        setData(value);
-        setError("");
-      })
-      .catch((err: Error) => setError(err.message));
-  }, [load]);
-
-  useEffect(() => {
-    refresh();
-    const timer = setInterval(refresh, seconds * 1000);
-    return () => clearInterval(timer);
-  }, [refresh, seconds]);
-
-  return { data, error, refresh };
-}
 
 function Board() {
   const loadSummary = useCallback(() => api.summary(), []);
@@ -76,6 +57,8 @@ function Board() {
     [orders.data, filter],
   );
 
+  const [note, setNote] = useState("");
+
   const patch = (order: Order, change: Partial<Order>) => {
     api
       .updateOrder(order.id, change)
@@ -83,10 +66,20 @@ function Board() {
       .catch((err: Error) => setError(err.message));
   };
 
+  const act = (promise: Promise<unknown>, message: string) =>
+    promise
+      .then(() => {
+        setNote(message);
+        setError("");
+        orders.refresh();
+      })
+      .catch((err: Error) => setError(err.message));
+
   return (
     <>
       <h1>לוח סדרן</h1>
       {(error || orders.error) && <div className="error">{error || orders.error}</div>}
+      {note && !error && <div className="muted">{note}</div>}
       <div className="cards">
         <div className="card">
           <b>{summary.data?.orders_24h ?? "—"}</b>
@@ -105,6 +98,8 @@ function Board() {
           <span>עלות הבוט ב-24 שעות</span>
         </div>
       </div>
+
+      <NewOrder onCreated={() => orders.refresh()} />
 
       <div className="row">
         <select value={filter} onChange={(e) => setFilter(e.target.value as OrderStatus | "all")}>
@@ -133,6 +128,7 @@ function Board() {
             <th>מחיר</th>
             <th>נהג</th>
             <th>סטטוס</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -169,11 +165,22 @@ function Board() {
                   ))}
                 </select>
               </td>
+              <td>
+                <button onClick={() => act(api.openTender(order.id, {}), "צינתוק נשלח")}>
+                  צינתוק לנהגים
+                </button>
+                <button onClick={() => act(api.finishOrder(order.id), "הנסיעה נסגרה וזוכתה")}>
+                  סיום נסיעה
+                </button>
+                <button onClick={() => act(api.redeemOrder(order.id), "נסיעה שולמה בנקודות")}>
+                  תשלום בנקודות
+                </button>
+              </td>
             </tr>
           ))}
           {shown.length === 0 && (
             <tr>
-              <td colSpan={9} className="muted">
+              <td colSpan={10} className="muted">
                 אין הזמנות להצגה.
               </td>
             </tr>
@@ -181,6 +188,87 @@ function Board() {
         </tbody>
       </table>
     </>
+  );
+}
+
+/** Orders taken by phone at the desk; ticking the box rings the area's drivers
+ *  the moment the order is saved. */
+function NewOrder({ onCreated }: { onCreated: () => void }) {
+  const blank = { phone: "", origin: "", destination: "", price: "", pickup_time: "" };
+  const [form, setForm] = useState(blank);
+  const [tender, setTender] = useState(true);
+  const [note, setNote] = useState("");
+
+  return (
+    <div className="panel">
+      <h2>הזמנה חדשה</h2>
+      {note && <div className="muted">{note}</div>}
+      <div className="grid">
+        <label>
+          טלפון הנוסע
+          <input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+        </label>
+        <label>
+          מוצא
+          <input
+            value={form.origin}
+            onChange={(e) => setForm({ ...form, origin: e.target.value })}
+          />
+        </label>
+        <label>
+          יעד
+          <input
+            value={form.destination}
+            onChange={(e) => setForm({ ...form, destination: e.target.value })}
+          />
+        </label>
+        <label>
+          מחיר מוסכם
+          <input
+            type="number"
+            value={form.price}
+            onChange={(e) => setForm({ ...form, price: e.target.value })}
+          />
+        </label>
+        <label>
+          שעת איסוף
+          <input
+            value={form.pickup_time}
+            onChange={(e) => setForm({ ...form, pickup_time: e.target.value })}
+          />
+        </label>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={tender}
+            onChange={(e) => setTender(e.target.checked)}
+          />
+          לצנתק לנהגים מיד
+        </label>
+      </div>
+      <button
+        className="action"
+        onClick={() =>
+          api
+            .createOrder({
+              phone: form.phone,
+              origin: form.origin,
+              destination: form.destination,
+              pickup_time: form.pickup_time || undefined,
+              price: form.price ? Number(form.price) : undefined,
+              tender,
+            })
+            .then((created) => {
+              setForm(blank);
+              setNote(`נקלטה הזמנה ${created.id}`);
+              onCreated();
+            })
+            .catch((err: Error) => setNote(err.message))
+        }
+      >
+        שמור הזמנה
+      </button>
+    </div>
   );
 }
 
@@ -338,15 +426,22 @@ function PromptEditor() {
 
 const VIEWS: Record<Tab, () => ReactElement> = {
   board: Board,
+  areas: AreaBoard,
+  tenders: Tenders,
+  drivers: Drivers,
+  club: Club,
+  accounting: Accounting,
   calls: Calls,
   prices: Prices,
   customers: Customers,
   prompt: PromptEditor,
+  settings: Settings,
 };
 
 export default function App() {
   const [tab, setTab] = useState<Tab>("board");
   const [token, setToken] = useState(tokenStore.get());
+  const [actor, setActor] = useState(actorStore.get());
   const View = VIEWS[tab];
 
   return (
@@ -369,6 +464,15 @@ export default function App() {
             onChange={(e) => {
               setToken(e.target.value);
               tokenStore.set(e.target.value);
+            }}
+          />
+          {/* Written to the action log next to every points movement. */}
+          <input
+            placeholder="שם הסדרן"
+            value={actor}
+            onChange={(e) => {
+              setActor(e.target.value);
+              actorStore.set(e.target.value);
             }}
           />
         </div>

@@ -215,6 +215,79 @@ textarea {
   margin-bottom: 1rem;
 }
 
+/* A form or a drilled-into record, set apart from the list it came from. */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.panel h2 {
+  margin-top: 0;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.grid label.check {
+  flex-direction: row;
+  align-items: center;
+}
+
+label.check input {
+  width: auto;
+}
+
+td button,
+.row button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  margin-inline-end: 0.3rem;
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+td button:hover,
+.row button:hover {
+  border-color: var(--accent);
+}
+
+.card.wide ul {
+  margin: 0.5rem 0 0;
+  padding-inline-start: 1rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 1.5rem 0 0.75rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  color: var(--muted);
+  margin: 1.25rem 0 0.5rem;
+}
+
 pre {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -257,20 +330,20 @@ pre {
     white-space: normal;
   }
 
-  /* The board carries nine columns; on a phone it becomes one card per order,
+  /* Every table here is wider than a phone; each becomes one card per row,
      each cell labelled by its header, so nothing hides off the right edge. */
-  .board thead {
+  table thead {
     display: none;
   }
 
-  .board,
-  .board tbody,
-  .board tr,
-  .board td {
+  table,
+  tbody,
+  tr,
+  td {
     display: block;
   }
 
-  .board tr {
+  tr {
     border: 1px solid var(--line);
     border-radius: 12px;
     margin-bottom: 0.75rem;
@@ -278,7 +351,7 @@ pre {
     background: var(--panel);
   }
 
-  .board td {
+  td {
     display: flex;
     justify-content: space-between;
     align-items: center;
@@ -288,18 +361,18 @@ pre {
     padding: 0.5rem 0;
   }
 
-  .board tr td:last-child {
+  tr td:last-child {
     border-bottom: 0;
   }
 
-  .board td::before {
+  td::before {
     content: attr(data-label);
     color: var(--muted);
     font-size: 0.8rem;
   }
 
-  .board td input,
-  .board td select {
+  td input,
+  td select {
     flex: 0 1 55%;
   }
 }

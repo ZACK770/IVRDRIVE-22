@@ -30,6 +30,18 @@ services:
         sync: false
       - key: CONSOLE_ORIGINS
         sync: false
+      # Module API URLs are built from this, so the PBX must be able to reach
+      # it; a wrong value means menus that play and then go nowhere.
+      - key: PUBLIC_BASE_URL
+        value: https://ivr-driver.onrender.com
+      # Flash calls stay simulated until Technoline allowlists this service's
+      # IP and someone flips this off deliberately.
+      - key: PBX_DRY_RUN
+        value: "1"
+      - key: PBX_API_KEY
+        sync: false
+      - key: SCHEDULER_ENABLED
+        value: "1"
     disk:
       name: captures
       mountPath: /var/data

@@ -14,7 +14,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app import db, notify
+from app import db, dispatch, loyalty, notify
 
 log = logging.getLogger("tools")
 
@@ -53,6 +53,13 @@ DECLARATIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "get_points",
+        "description": (
+            "מצב הניקוד של המתקשר במועדון הנוסעים, וכמה נקודות חסרות לנסיעת חינם."
+        ),
+        "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
+    },
+    {
         "name": "save_order",
         "description": "שמירת ההזמנה בסיום. קרא לזה רק אחרי שהלקוח אישר את הפרטים.",
         "parameters": {
@@ -85,6 +92,7 @@ class ToolContext:
             "get_customer": self._get_customer,
             "get_recent_call": self._get_recent_call,
             "lookup_price": self._lookup_price,
+            "get_points": self._get_points,
             "save_order": self._save_order,
         }
         handler = handlers.get(name)
@@ -169,6 +177,18 @@ class ToolContext:
                 "destination": hit.destination,
             }
 
+    def _get_points(self, args: dict[str, Any]) -> dict[str, Any]:
+        phone = db.normalize_phone(args.get("phone") or self.caller)
+        with db.session_scope() as session:
+            balance = loyalty.balance(session, phone)
+        cost = db.setting_int("redeem_points")
+        return {
+            "balance": balance,
+            "free_ride_cost": cost,
+            "can_redeem": balance >= cost,
+            "missing": max(0, cost - balance),
+        }
+
     def _save_order(self, args: dict[str, Any]) -> dict[str, Any]:
         with db.session_scope() as session:
             order = db.Order(
@@ -180,10 +200,15 @@ class ToolContext:
                 pickup_time=args.get("pickup_time"),
                 price=args.get("price"),
                 notes=args.get("notes"),
+                area=args.get("origin", ""),
             )
             session.add(order)
             session.flush()
             self.saved_order_id = order.id
+            # Ringing the drivers straight off the call is opt-in: most offices
+            # want a dispatcher to see the order first.
+            if db.setting_int("auto_tender"):
+                dispatch.open_tender(session, order, actor="bot")
             payload = {
                 "order_id": order.id,
                 "phone": order.phone,

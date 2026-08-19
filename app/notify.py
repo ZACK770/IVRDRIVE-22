@@ -35,12 +35,19 @@ def format_order(order: dict[str, object]) -> str:
 
 
 def send_order(order: dict[str, object]) -> bool:
+    return _post({"type": "order", "text": format_order(order), "order": order})
+
+
+def send_text(text: str, *, kind: str = "message", extra: dict | None = None) -> bool:
+    """Free-form outbound message — a driver's ride statement, a receipt."""
+    return _post({"type": kind, "text": text, **(extra or {})})
+
+
+def _post(payload: dict[str, object]) -> bool:
     """Best effort: a failed notification must never fail the call."""
     if not WEBHOOK_URL:
         return False
-    body = json.dumps(
-        {"type": "order", "text": format_order(order), "order": order}, ensure_ascii=False
-    ).encode()
+    body = json.dumps(payload, ensure_ascii=False).encode()
     request = urllib.request.Request(
         WEBHOOK_URL, data=body, headers={"Content-Type": "application/json"}
     )

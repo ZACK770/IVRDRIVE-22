@@ -14,6 +14,8 @@ import logging
 import os
 import time
 import uuid
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
@@ -21,16 +23,41 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.websockets import WebSocketDisconnect
 
-from app import admin, api, bridge, capture, codecs, console_proxy, db
+from app import (
+    admin,
+    api,
+    bridge,
+    capture,
+    codecs,
+    console_proxy,
+    db,
+    ivr,
+    ops_api,
+    pbx,
+    scheduler,
+)
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
 )
 log = logging.getLogger("probe")
 
-app = FastAPI(title="Technoline raw-channel probe")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    db.init_db()
+    scheduler.start()
+    try:
+        yield
+    finally:
+        await scheduler.stop()
+
+
+app = FastAPI(title="Technoline raw-channel probe", lifespan=lifespan)
 app.include_router(admin.router)
 app.include_router(api.router)
+app.include_router(ops_api.router)
+app.include_router(ivr.router)
 app.include_router(console_proxy.router)
 
 #: The console runs as a separate Render service on its own domain, so the API
@@ -47,10 +74,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.on_event("startup")
-async def _startup() -> None:
-    db.init_db()
 
 #: off | loopback | tone. Loopback proves the outbound direction works without
 #: needing to know the codec: if the caller hears themselves, our framing is right.
@@ -243,6 +266,8 @@ async def healthz() -> dict:
         "mode": MODE,
         "echo_mode": ECHO_MODE,
         "gemini_key_present": bool(GEMINI_API_KEY),
+        "pbx_dry_run": pbx.DRY_RUN,
+        "scheduler": scheduler.ENABLED,
     }
 
 
