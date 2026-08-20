@@ -320,6 +320,7 @@ async def driver_line(request: Request) -> JSONResponse:
     except Exception:
         log.exception("driver IVR failed for %s", params)
         body = message("error")
+    log.info("ivr/driver request=%s response=%s", params, json.dumps(body, ensure_ascii=False))
     return JSONResponse(body)
 
 
@@ -713,6 +714,7 @@ async def passenger_line(request: Request) -> JSONResponse:
     except Exception:
         log.exception("passenger IVR failed for %s", params)
         body = message("error")
+    log.info("ivr/passenger request=%s response=%s", params, json.dumps(body, ensure_ascii=False))
     return JSONResponse(body)
 
 
@@ -794,6 +796,7 @@ async def rating_line(request: Request) -> JSONResponse:
     except Exception:
         log.exception("rating IVR failed for %s", params)
         body = message("error")
+    log.info("ivr/rating request=%s response=%s", params, json.dumps(body, ensure_ascii=False))
     return JSONResponse(body)
 
 
