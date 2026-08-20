@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, dispatch, drivers, ivr, loyalty, ratings, referrals
+from app import db, dispatch, drivers, ivr, loyalty, ratings, referrals, tts
 from app.main import app
 
 #: The subset of the documented module list this service emits.
@@ -36,7 +36,7 @@ def call(client: TestClient, path: str, **params) -> dict:
 
 def test_an_unknown_driver_is_offered_registration(client):
     body = call(client, "/ivr/driver", callId="c1", caller=DRIVER)
-    assert body["fileName"] == ivr.DEFAULT_AUDIO["driver_register"]
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["driver_register"]
 
 
 def test_registration_collects_the_car_year_and_seats(client):
@@ -45,7 +45,7 @@ def test_registration_collects_the_car_year_and_seats(client):
     assert year["type"] == "getDTMF"
     call(client, "/ivr/driver", callId="c1", caller=DRIVER, dtmf="2021")
     done = call(client, "/ivr/driver", callId="c1", caller=DRIVER, dtmf="4")
-    assert done["fileName"] == ivr.DEFAULT_AUDIO["driver_pending"]
+    assert done["files"][0]["text"] == tts.AUDIO_TEXTS["driver_pending"]
 
     with db.session_scope() as session:
         driver = drivers.get_by_phone(session, DRIVER)
@@ -60,7 +60,7 @@ def test_a_second_call_on_a_reused_id_starts_from_the_top(client):
 
     again = call(client, "/ivr/driver", callId="", caller=DRIVER)
 
-    assert again["fileName"] == ivr.DEFAULT_AUDIO["driver_register"]
+    assert again["files"][0]["text"] == tts.AUDIO_TEXTS["driver_register"]
 
 
 def test_registration_never_demotes_a_driver_the_office_approved(client):
@@ -76,7 +76,7 @@ def test_a_pending_driver_hears_that_and_nothing_else(client):
     with db.session_scope() as session:
         drivers.register(session, DRIVER)
     body = call(client, "/ivr/driver", callId="c2", caller=DRIVER)
-    assert body["fileName"] == ivr.DEFAULT_AUDIO["driver_pending"]
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["driver_pending"]
 
 
 def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
@@ -90,10 +90,10 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         dispatch.open_tender(session, order, area="ירושלים")
 
     offer = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert offer["fileName"] == ivr.DEFAULT_AUDIO["driver_offer"]
+    assert offer["files"][0]["text"] == tts.offer_text(order)
 
     waiting = call(client, "/ivr/driver", callId="c3", caller=DRIVER, dtmf="1")
-    assert waiting["fileName"] == ivr.DEFAULT_AUDIO["driver_wait"]
+    assert waiting["files"][0]["text"] == tts.AUDIO_TEXTS["driver_wait"]
 
     with db.session_scope() as session:
         tender = session.scalars(db.select(db.Tender)).first()
@@ -122,7 +122,7 @@ def test_redeeming_without_points_says_so(client):
         )
     call(client, "/ivr/passenger", callId="c5", caller=PASSENGER)
     body = call(client, "/ivr/passenger", callId="c5", caller=PASSENGER, dtmf="2")
-    assert body["fileName"] == ivr.DEFAULT_AUDIO["passenger_redeem_no"]
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["passenger_redeem_no"]
 
 
 def test_redeeming_with_points_zeroes_the_fare(client):
@@ -133,7 +133,7 @@ def test_redeeming_with_points_zeroes_the_fare(client):
         loyalty.grant(session, phone=PASSENGER, delta=500, reason="manual")
     call(client, "/ivr/passenger", callId="c6", caller=PASSENGER)
     body = call(client, "/ivr/passenger", callId="c6", caller=PASSENGER, dtmf="2")
-    assert body["fileName"] == ivr.DEFAULT_AUDIO["passenger_redeem_ok"]
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["passenger_redeem_ok"]
     with db.session_scope() as session:
         order = session.scalars(db.select(db.Order)).first()
         assert (order.price, order.points_spent) == (0.0, 500)
@@ -158,7 +158,7 @@ def test_the_rating_call_records_one_score(client):
 
     call(client, "/ivr/rating", callId="c7", caller=PASSENGER, rating=rating_id)
     body = call(client, "/ivr/rating", callId="c7", caller=PASSENGER, rating=rating_id, dtmf="5")
-    assert body["fileName"] == ivr.DEFAULT_AUDIO["rating_thanks"]
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["rating_thanks"]
 
     with db.session_scope() as session:
         request = session.get(db.RatingRequest, rating_id)

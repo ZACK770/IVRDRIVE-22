@@ -60,8 +60,19 @@ class PbxError(RuntimeError):
 
 
 def _ok(payload: dict) -> bool:
-    """Older endpoints answer `Ok`, newer ones `OK`; both mean success."""
-    return str(payload.get("status", "")).strip().lower() == "ok"
+    """Older endpoints answer `Ok`, newer ones `OK`; both mean success.
+    Campaign actions use `errorCode: 0`, and the report endpoint returns
+    `campaign` / `calls` without a `status` wrapper.
+    """
+    if not isinstance(payload, dict):
+        return False
+    if str(payload.get("status", "")).strip().lower() == "ok":
+        return True
+    if str(payload.get("errorCode", "")) == "0":
+        return True
+    if "campaign" in payload or "calls" in payload:
+        return True
+    return False
 
 
 def _request(action: str, params: dict, *, endpoint: str = "ivrFilesApi.php") -> dict:
@@ -161,27 +172,25 @@ def flash_call(
 
 
 def voice_broadcast(
-    phones: list[str], *, name: str, file_name: str | None = None, module_url: str | None = None
+    phones: list[str], *, name: str, module_url: str | None = None
 ) -> dict:
     """The paid alternative to a flash call: the driver's phone is answered by
-    a recorded offer and a keypress hands the call to our Module API tree.
-
-    The documentation names the action but not its parameters, so these field
-    names are provisional; a failure here downgrades the driver to a flash
-    call rather than dropping them from the tender.
+    the PBX calling our Module API endpoint, where we return a TTS offer and
+    a keypress is captured. This uses the documented `messagesType=apiUrl`
+    model and avoids pre-generated MP3 files.
     """
     if not phones:
         return {"started": False, "note": "אין נמענים"}
     params: dict[str, object] = {
         "campaignName": name,
         "phones": ",".join(db.normalize_phone(p) for p in phones),
+        "messagesType": "apiUrl",
+        "callLength": 25,
     }
-    if file_name:
-        params["fileName"] = file_name
     if module_url:
-        params["moduleUrl"] = module_url
+        params["apiUrl"] = module_url
     payload = _request("campaignRun", params, endpoint="campaignApi.php")
-    return {"started": True, "response": payload}
+    return {"started": True, "campaign_id": payload.get("campaignId"), "response": payload}
 
 
 def campaign_report(campaign_id: str) -> dict:

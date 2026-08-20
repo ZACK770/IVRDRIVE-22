@@ -134,6 +134,10 @@ def hangup() -> dict:
     return {"type": "hangup"}
 
 
+def say(text: str) -> dict:
+    return {"type": "simpleMessage", "files": [{"text": text}]}
+
+
 # ------------------------------------------------------------ call plumbing
 
 
@@ -225,12 +229,17 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
             return menu("driver_register", keys="1")
         if driver.status != "active":
             return message("driver_pending")
-        tender = dispatch.latest_tender_for_driver(session, driver)
-        if tender is not None:
+        tender = None
+        if params.get("tender"):
+            tender = session.get(db.Tender, int(params["tender"]))
+        if tender is None:
+            tender = dispatch.latest_tender_for_driver(session, driver)
+        if tender is not None and tender.status == dispatch.STATUS_OPEN:
             order = session.get(db.Order, tender.order_id)
             state.update({"tender": tender.id, "order": order.id if order else None})
             _save(row, "offer", state)
-            return menu("driver_offer", keys="1", file_name=tender.offer_audio)
+            offer = tts.offer_text(order) if order else tts.AUDIO_TEXTS.get("driver_offer", "")
+            return menu("driver_offer", keys="1", text=offer)
         _save(row, "menu", state)
         return menu("driver_menu", keys="1,2,3,4,5,6")
 
@@ -287,12 +296,45 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         _save(row, "done", state)
         return message("driver_pending")
 
-    if row.step == "area_choice":
+    if row.step == "areas":
+        if dtmf == "1":
+            state["area_action"] = "add"
+            _save(row, "area_select", state)
+            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_add_prompt"], keys="1,2,3,4,5,6,7,8,9")
+        if dtmf == "2":
+            state["area_action"] = "remove"
+            _save(row, "area_select", state)
+            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_remove_prompt"], keys="1,2,3,4,5,6,7,8,9")
+        if dtmf == "3":
+            areas_text = drivers.areas_list_text(session, driver)
+            menu_text = f"{areas_text} {tts.AUDIO_TEXTS['driver_areas_menu']}"
+            _save(row, "areas", state)
+            return menu("driver_areas_menu", text=menu_text, keys="1,2,3,4")
+        if dtmf == "4" or dtmf == "":
+            _save(row, "done", state)
+            return message("driver_saved")
+        _save(row, "menu", state)
+        return menu("driver_menu", keys="1,2,3,4,5,6")
+
+    if row.step == "area_select":
         area = _area_by_index(session, dtmf)
-        if area is not None and driver is not None:
-            drivers.set_areas(session, driver, [area.name])
-        _save(row, "done", state)
-        return message("driver_saved")
+        action = state.get("area_action")
+        if area is None or driver is None:
+            _save(row, "areas", state)
+            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_prompt"], keys="1,2,3,4")
+        if action == "add":
+            result = drivers.add_area(session, driver, area.name)
+            prompt = "driver_area_added" if result["ok"] else "driver_area_already"
+        elif action == "remove":
+            result = drivers.remove_area(session, driver, area.name)
+            prompt = "driver_area_removed" if result["ok"] else "driver_area_not_found"
+        else:
+            _save(row, "areas", state)
+            return menu("driver_areas_menu", keys="1,2,3,4")
+        confirm = tts.AUDIO_TEXTS.get(prompt, "")
+        menu_text = f"{confirm} {tts.AUDIO_TEXTS['driver_areas_menu']}"
+        _save(row, "areas", state)
+        return menu("driver_areas_menu", text=menu_text, keys="1,2,3,4")
 
     if row.step == "quiet_from":
         state["quiet_from"] = dtmf
@@ -331,13 +373,15 @@ def _driver_menu_choice(
             return message("driver_no_offer")
         state["tender"] = tender.id
         _save(row, "offer", state)
-        return menu("driver_offer", keys="1", file_name=tender.offer_audio)
+        order = session.get(db.Order, tender.order_id)
+        offer = tts.offer_text(order) if order else tts.AUDIO_TEXTS.get("driver_offer", "")
+        return menu("driver_offer", keys="1", text=offer)
     if dtmf == "2":  # reputation
         _save(row, "done", state)
         return message("driver_reputation")
     if dtmf == "3":  # preferred areas
-        _save(row, "area_choice", state)
-        return menu("driver_area_prompt", keys="1,2,3,4,5,6,7,8,9")
+        _save(row, "areas", state)
+        return menu("driver_areas_menu", keys="1,2,3,4")
     if dtmf == "4":  # quiet hours
         _save(row, "quiet_from", state)
         return get_digits(min_digits=2, max_digits=2)

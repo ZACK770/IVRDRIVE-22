@@ -26,7 +26,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import db, drivers, loyalty, pbx, ratings, tts
+from app import db, drivers, loyalty, pbx, ratings
 
 log = logging.getLogger("dispatch")
 
@@ -81,8 +81,6 @@ def open_tender(
         entity_id=tender.id,
         detail=f"order {order.id} area {area} notified {tender.notified}",
     )
-    order_id, tender_id = order.id, tender.id
-    threading.Thread(target=_synthesize_offer, args=(order_id, tender_id), daemon=True).start()
     return {
         "ok": True,
         "tender_id": tender.id,
@@ -119,12 +117,14 @@ def blast_tender(session: Session, tender: db.Tender, filters: dict) -> dict:
     voice_sent = 0
     if voice_targets:
         try:
-            pbx.voice_broadcast(
+            result = pbx.voice_broadcast(
                 [d.phone for d in voice_targets],
                 name=f"tender-{tender.id}",
                 module_url=voice_module_url(tender),
             )
             voice_sent = len(voice_targets)
+            tender.campaign_id = result.get("campaign_id")
+            session.flush()
         except pbx.PbxError as exc:
             # A campaign that will not start must not leave the drivers who
             # paid for it worse off than the ones who did not.
@@ -314,23 +314,3 @@ def finish_ride(session: Session, order: db.Order, *, area: str | None = None) -
     return {"order_id": order.id, "points": awarded, "rating": rating}
 
 
-def _synthesize_offer(order_id: int, tender_id: int) -> None:
-    """Generate a TTS offer for this ride and upload it to the PBX library.
-
-    Runs in the background; if anything fails (no PBX API, dry run, network),
-    the default static ``driver_offer`` audio is used instead.
-    """
-    try:
-        with db.session_scope() as session:
-            order = session.get(db.Order, order_id)
-            tender = session.get(db.Tender, tender_id)
-            if order is None or tender is None:
-                return
-            data = tts.synthesize(tts.offer_text(order))
-            file_name = f"tender-{tender.id}-offer"
-            result = pbx.upload_file(file_name, data)
-            if result.get("status", "").lower() == "ok" and not result.get("dry_run"):
-                tender.offer_audio = file_name
-            # any failure is intentionally ignored: a static menu is the fallback
-    except Exception:
-        log.exception("TTS offer synthesis failed for tender %s", tender_id)

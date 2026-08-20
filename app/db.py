@@ -212,6 +212,8 @@ class Tender(Base):
     filters_json: Mapped[str | None] = mapped_column(Text)
     #: Name of the uploaded TTS file in the PBX audio library.
     offer_audio: Mapped[str | None] = mapped_column(String(120))
+    #: PBX campaign id when paid drivers are rung via the voice campaign API.
+    campaign_id: Mapped[str | None] = mapped_column(String(32))
     notified: Mapped[int] = mapped_column(Integer, default=0)
 
 
@@ -486,6 +488,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     #: Open the bidding automatically when the bot saves an order, instead of
     #: waiting for a dispatcher to press the button.
     "auto_tender": "1",
+    #: Stop a paid voice campaign once this many calls have been answered.
+    "voice_campaign_stop_answered": "30",
 }
 
 

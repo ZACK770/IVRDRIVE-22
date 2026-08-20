@@ -114,12 +114,56 @@ def set_areas(session: Session, driver: db.Driver, areas: list[str]) -> None:
             session.add(db.DriverArea(driver_id=driver.id, area=clean))
 
 
+def add_area(session: Session, driver: db.Driver, area: str) -> dict:
+    clean = (area or "").strip()
+    if not clean:
+        return {"ok": False, "error": "אזור לא תקין"}
+    existing = session.scalars(
+        select(db.DriverArea).where(
+            db.DriverArea.driver_id == driver.id, db.DriverArea.area == clean
+        )
+    ).first()
+    if existing is not None:
+        return {"ok": False, "error": "האזור כבר ברשימה"}
+    session.add(db.DriverArea(driver_id=driver.id, area=clean))
+    db.log_action(
+        session, "driver_area_added", entity="driver", entity_id=driver.id, detail=clean
+    )
+    return {"ok": True, "area": clean}
+
+
+def remove_area(session: Session, driver: db.Driver, area: str) -> dict:
+    clean = (area or "").strip()
+    if not clean:
+        return {"ok": False, "error": "אזור לא תקין"}
+    existing = session.scalars(
+        select(db.DriverArea).where(
+            db.DriverArea.driver_id == driver.id, db.DriverArea.area == clean
+        )
+    ).first()
+    if existing is None:
+        return {"ok": False, "error": "האזור אינו ברשימה"}
+    session.delete(existing)
+    db.log_action(
+        session, "driver_area_removed", entity="driver", entity_id=driver.id, detail=clean
+    )
+    return {"ok": True, "area": clean}
+
+
 def areas_of(session: Session, driver: db.Driver) -> list[str]:
     return list(
         session.scalars(
             select(db.DriverArea.area).where(db.DriverArea.driver_id == driver.id)
         ).all()
     )
+
+
+def areas_list_text(session: Session, driver: db.Driver) -> str:
+    areas = areas_of(session, driver)
+    if not areas:
+        return "אין אזורים רשומים. כל האזורים פעילים ברירת מחדל."
+    joined = ", ".join(areas)
+    return f"האזורים שלך: {joined}."
 
 
 def average_rating(driver: db.Driver) -> float | None:
