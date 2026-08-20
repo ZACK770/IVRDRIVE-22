@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -81,6 +82,21 @@ def audio(key: str) -> str:
 # --------------------------------------------------------------- module JSON
 
 
+def _split_text(text: str) -> list[dict]:
+    """Split a long prompt into short `files` items.
+
+    The Technoline docs recommend short, reusable `text` chunks because each
+    string is TTS-synthesised once and cached.  One long unique block is slow
+    and can be rejected if it hits the TTS service length limit.
+    """
+    if not text:
+        return []
+    parts = [p.strip() for p in re.split(r"(?<=\.)\s+", text) if p.strip()]
+    if len(parts) == 1:
+        return [{"text": parts[0]}]
+    return [{"text": p if p.endswith(".") else f"{p}."} for p in parts]
+
+
 def message(key: str, **extra: Any) -> dict:
     text = tts.AUDIO_TEXTS.get(key)
     if text:
@@ -107,9 +123,9 @@ def menu(
     if file_name:
         files = [{"fileName": file_name}]
     elif text:
-        files = [{"text": text}]
+        files = _split_text(text)
     elif key in tts.AUDIO_TEXTS:
-        files = [{"text": tts.AUDIO_TEXTS[key]}]
+        files = _split_text(tts.AUDIO_TEXTS[key])
     else:
         files = [{"fileName": audio(key)}]
     return {
@@ -155,7 +171,7 @@ def record(
         "confirm": confirm,
     }
     if text:
-        module["files"] = [{"text": text}]
+        module["files"] = _split_text(text)
     return module
 
 

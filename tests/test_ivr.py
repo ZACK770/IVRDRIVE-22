@@ -60,7 +60,7 @@ def test_every_registration_question_is_spoken_before_the_digits(client):
     assert step(client)["type"] == "getDTMF"
 
     area_menu = step(client, dtmf="1980")
-    assert "ירושלים" in area_menu["files"][0]["text"]
+    assert any("ירושלים" in f["text"] for f in area_menu["files"])
     done = step(client, dtmf="1")
     assert tts.AUDIO_TEXTS["driver_pending"] in done["files"][0]["text"]
 
@@ -118,7 +118,8 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         dispatch.open_tender(session, order, area="ירושלים")
 
     offer = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert offer["files"][0]["text"] == tts.offer_text(order)
+    full_offer = " ".join(f["text"] for f in offer["files"]).strip()
+    assert full_offer == tts.offer_text(order)
 
     waiting = call(client, "/ivr/driver", callId="c3", caller=DRIVER, dtmf="1")
     assert waiting["files"][0]["text"] == tts.AUDIO_TEXTS["driver_wait"]
