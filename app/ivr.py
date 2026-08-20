@@ -264,9 +264,9 @@ def call_params(request: Request) -> dict[str, str]:
         recording_path = pick_prefix("path_")
 
     return {
-        "call_id": pick("callId", "call_id", "uniqueid", "id"),
-        "caller": pick("caller", "phone", "callerid", "did_caller", "from"),
-        "extension": pick("extension", "ext", "did"),
+        "call_id": pick("callId", "call_id", "uniqueid", "id", "pbxcallid"),
+        "caller": pick("caller", "phone", "callerid", "did_caller", "from", "pbxphone"),
+        "extension": pick("extension", "ext", "did", "pbxextensionid"),
         "dtmf": dtmf,
         "area": pick("area"),
         "tender": pick("tender"),
@@ -329,7 +329,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
     row = _session_row(session, params["call_id"] or caller, caller)
     state = _state(row)
     dtmf = params["dtmf"]
-    driver = drivers.get_by_phone(session, caller)
+    driver = drivers.get_by_phone(session, caller) if caller else None
 
     if row.step == "done":
         return hangup()
@@ -719,7 +719,7 @@ async def passenger_line(request: Request) -> JSONResponse:
 
 
 def _passenger_step(session: Session, params: dict[str, str]) -> dict:
-    caller = db.normalize_phone(params["caller"])
+    caller = db.normalize_phone(params["caller"]) if params["caller"] else ""
     row = _session_row(session, params["call_id"] or caller, caller)
     state = _state(row)
     dtmf = params["dtmf"]
@@ -801,7 +801,7 @@ async def rating_line(request: Request) -> JSONResponse:
 
 
 def _rating_step(session: Session, params: dict[str, str]) -> dict:
-    caller = db.normalize_phone(params["caller"])
+    caller = db.normalize_phone(params["caller"]) if params["caller"] else ""
     row = _session_row(session, params["call_id"] or caller, caller)
     state = _state(row)
     dtmf = params["dtmf"]
