@@ -5,7 +5,7 @@ Three surfaces, three trust models, and they are not interchangeable:
 * ``ivrFilesApi.php?action=makeCall`` places the flash call ("צינתוק"): it rings
   the recipient with a caller ID we choose and hangs up the moment they answer.
   No audio, no cost to the driver, and the number stays in their missed calls.
-  Requires an apiKey and an IP whitelist entry.
+  Authenticated by IP whitelist only — no apiKey.
 * ``campaignApi.php`` broadcasts a recorded offer to a list of numbers. apiKey
   *and* IP whitelist. This is the paid path, used for drivers who bought spoken
   offers.
@@ -79,7 +79,9 @@ def _request(
 ) -> dict:
     url = f"{BASE_URL}/{endpoint}"
     body = {"action": action, **{k: v for k, v in params.items() if v is not None}}
-    if API_KEY:
+    # makeCall is authenticated by source-IP only; the docs say the endpoint
+    # rejects on IP, not on key, and adding an apiKey there is at best noise.
+    if API_KEY and action != "makeCall":
         body.setdefault("apiKey", API_KEY)
     if DRY_RUN:
         redacted = {k: ("***" if k == "apiKey" else v) for k, v in body.items()}

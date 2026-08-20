@@ -14,7 +14,7 @@ from app import db, dispatch, drivers, loyalty, ratings, referrals, tts
 from app.main import app
 
 #: The subset of the documented module list this service emits.
-KNOWN_TYPES = {"simpleMessage", "simpleMenu", "getDTMF", "simpleRouting", "hangup"}
+KNOWN_TYPES = {"simpleMessage", "simpleMenu", "getDTMF", "simpleRouting", "hangup", "record"}
 
 DRIVER = "0521111111"
 PASSENGER = "0529999999"
@@ -176,8 +176,27 @@ def test_redeeming_without_points_says_so(client):
         session.add(
             db.Order(call_id="x", phone=PASSENGER, origin="a", destination="b", price=90.0)
         )
-    call(client, "/ivr/passenger", callId="c5", caller=PASSENGER)
+    body = call(client, "/ivr/passenger", callId="c5", caller=PASSENGER)
+    assert body.get("name") == "dtmf"
+    assert body.get("enabledKeys") == "1,2,3,4"
     body = call(client, "/ivr/passenger", callId="c5", caller=PASSENGER, dtmf="2")
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["passenger_redeem_no"]
+
+
+def test_pbx_sends_dtmf_with_empty_param_name(client):
+    """Some PBX builds append the captured digit as an unnamed query value."""
+    with db.session_scope() as session:
+        session.add(
+            db.Order(call_id="x", phone=PASSENGER, origin="a", destination="b", price=90.0)
+        )
+    call(client, "/ivr/passenger", callId="c10", caller=PASSENGER)
+    response = client.get(
+        "/ivr/passenger",
+        params={"callId": "c10", "caller": PASSENGER, "": "2"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["type"] == "simpleMessage"
     assert body["files"][0]["text"] == tts.AUDIO_TEXTS["passenger_redeem_no"]
 
 
@@ -222,7 +241,64 @@ def test_the_rating_call_records_one_score(client):
         assert drivers.get_by_phone(session, DRIVER).rating_count == 1
 
 
+def test_a_low_rating_asks_for_a_voice_feedback(client):
+    with db.session_scope() as session:
+        driver = drivers.register(session, DRIVER, status="active")
+        order = db.Order(
+            call_id="x",
+            phone=PASSENGER,
+            origin="a",
+            destination="b",
+            price=50.0,
+            status="done",
+            driver_id=driver.id,
+        )
+        session.add(order)
+        session.flush()
+        ratings.schedule_for_order(session, order)
+        rating_id = session.scalars(db.select(db.RatingRequest)).first().id
+
+    call(client, "/ivr/rating", callId="c8", caller=PASSENGER, rating=rating_id)
+    body = call(client, "/ivr/rating", callId="c8", caller=PASSENGER, rating=rating_id, dtmf="2")
+    assert body["type"] == "record"
+    assert body["name"] == "feedback"
+    assert "תוכל לשתף" in body["files"][0]["text"]
+
+    body = call(
+        client,
+        "/ivr/rating",
+        callId="c8",
+        caller=PASSENGER,
+        rating=rating_id,
+        PATH_feedback="https://example.com/rec.mp3",
+    )
+    assert body["files"][0]["text"] == tts.AUDIO_TEXTS["rating_thanks"]
+    with db.session_scope() as session:
+        request = session.get(db.RatingRequest, rating_id)
+        assert request.score == 2
+        assert request.feedback_recording_url == "https://example.com/rec.mp3"
+
+
+def test_module_payloads_use_tlivr_field_names(client):
+    body = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
+    assert body["type"] == "simpleMenu"
+    assert body["name"] == "dtmf"
+    assert "enabledKeys" in body
+    assert "times" in body
+    assert "tries" not in body
+    assert "min_digits" not in body
+    assert "max_digits" not in body
+
+    call(client, "/ivr/driver", callId="c9", caller=DRIVER, dtmf="1")
+    body = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
+    assert body["type"] == "getDTMF"
+    assert body["max"] == 4
+    assert body["min"] == 4
+    assert "max_digits" not in body
+    assert "min_digits" not in body
+
+
 def test_a_broken_step_still_returns_a_module(client):
     # No caller at all: the PBX must still get valid JSON rather than a 500.
-    body = call(client, "/ivr/driver", callId="c8")
+    body = call(client, "/ivr/driver", callId="c10")
     assert body["type"] in KNOWN_TYPES

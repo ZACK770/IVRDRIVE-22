@@ -88,15 +88,6 @@ def message(key: str, **extra: Any) -> dict:
     return {"type": "simpleMessage", "fileName": audio(key), **extra}
 
 
-def _digits_from_keys(keys: str | None) -> tuple[int, int]:
-    """Derive min/max digit length from a comma-separated enabled-keys list."""
-    if not keys:
-        return 1, 1
-    parts = [p.strip() for p in keys.split(",") if p.strip()]
-    lengths = [len(p) for p in parts]
-    return min(lengths), max(lengths)
-
-
 def menu(
     key: str,
     *,
@@ -108,10 +99,10 @@ def menu(
 ) -> dict:
     """Return a simpleMenu module per the Technoline Module API spec.
 
-    The PBX documented fields are ``fileName``/``files`` for audio and
-    ``min_digits``/``max_digits``/``tries``/``timeout`` for capture.  We derive
-    ``min_digits``/``max_digits`` from the supplied ``keys`` so multi-digit
-    options (e.g. area lists longer than nine) still work.
+    Required fields: ``name`` (the query-key the PBX uses for the pressed
+    key), ``enabledKeys`` (comma-separated allowed keys), ``times`` (how many
+    times to repeat the menu), ``timeout`` (seconds to wait), and ``files``
+    (the audio to play).  See ``https://app.tlivr.com/apiModuleDocs.html``.
     """
     if file_name:
         files = [{"fileName": file_name}]
@@ -121,14 +112,14 @@ def menu(
         files = [{"text": tts.AUDIO_TEXTS[key]}]
     else:
         files = [{"fileName": audio(key)}]
-    min_digits, max_digits = _digits_from_keys(keys)
     return {
         "type": "simpleMenu",
-        "files": files,
-        "min_digits": min_digits,
-        "max_digits": max_digits,
-        "tries": tries,
+        "name": "dtmf",
+        "enabledKeys": keys or "",
+        "times": tries,
         "timeout": timeout,
+        "setMusic": "no",
+        "files": files,
     }
 
 
@@ -136,10 +127,36 @@ def get_digits(*, min_digits: int = 1, max_digits: int = 10, timeout: int = 8) -
     """Return a getDTMF module per the Technoline Module API spec."""
     return {
         "type": "getDTMF",
-        "min_digits": min_digits,
-        "max_digits": max_digits,
+        "name": "dtmf",
+        "max": max_digits,
+        "min": min_digits,
         "timeout": timeout,
     }
+
+
+def record(
+    name: str,
+    *,
+    max_seconds: int = 30,
+    min_seconds: int = 2,
+    text: str | None = None,
+    confirm: str = "no",
+) -> dict:
+    """Return a record module per the Technoline Module API spec.
+
+    The PBX returns the file name in ``<name>`` and the full path/URL in
+    ``PATH_<name>`` after the recording is complete.
+    """
+    module: dict = {
+        "type": "record",
+        "name": name,
+        "max": max_seconds,
+        "min": min_seconds,
+        "confirm": confirm,
+    }
+    if text:
+        module["files"] = [{"text": text}]
+    return module
 
 
 #: Step that plays a question and remembers where the digits belong. ``getDTMF``
@@ -210,14 +227,36 @@ def call_params(request: Request) -> dict[str, str]:
                 return str(value)
         return ""
 
+    def pick_prefix(prefix: str) -> str:
+        for key, value in raw.items():
+            if key.startswith(prefix.lower()):
+                return str(value)
+        return ""
+
+    dtmf = pick("dtmf", "digits", "input", "value")
+    # Some PBX builds append the captured digit as an unnamed query value
+    # (e.g. ...&=3) when the module response does not name a DTMF variable.
+    # We keep this fallback for calls that are already in flight.
+    if not dtmf and raw.get(""):
+        dtmf = str(raw[""])
+
+    recording = pick("recording", "record", "recordurl", "recordingurl")
+    if not recording:
+        recording = pick_prefix("file_")
+    recording_path = pick("path", "recording_path", "record_path")
+    if not recording_path:
+        recording_path = pick_prefix("path_")
+
     return {
         "call_id": pick("callId", "call_id", "uniqueid", "id"),
         "caller": pick("caller", "phone", "callerid", "did_caller", "from"),
         "extension": pick("extension", "ext", "did"),
-        "dtmf": pick("dtmf", "digits", "input", "value"),
+        "dtmf": dtmf,
         "area": pick("area"),
         "tender": pick("tender"),
         "rating": pick("rating"),
+        "recording": recording,
+        "recording_path": recording_path,
     }
 
 
@@ -751,33 +790,67 @@ def _rating_step(session: Session, params: dict[str, str]) -> dict:
     if request_id:
         state["rating"] = str(request_id)
 
-    if row.step == "start" or not dtmf:
+    if row.step == "done":
+        return hangup()
+
+    if row.step == "start" or (row.step == "score" and not dtmf):
         _save(row, "score", state)
         return menu("rating_prompt", keys="1,2,3,4,5")
 
-    rating = (
-        session.get(db.RatingRequest, int(state["rating"]))
-        if str(state.get("rating") or "").isdigit()
-        else None
-    )
-    if rating is None:
-        rating = session.scalars(
-            select(db.RatingRequest)
-            .where(
-                db.RatingRequest.phone == caller,
-                db.RatingRequest.status.in_((ratings.STATUS_CALLING, ratings.STATUS_SCHEDULED)),
+    if row.step == "score" and dtmf:
+        rating = (
+            session.get(db.RatingRequest, int(state["rating"]))
+            if str(state.get("rating") or "").isdigit()
+            else None
+        )
+        if rating is None:
+            rating = session.scalars(
+                select(db.RatingRequest)
+                .where(
+                    db.RatingRequest.phone == caller,
+                    db.RatingRequest.status.in_((ratings.STATUS_CALLING, ratings.STATUS_SCHEDULED)),
+                )
+                .order_by(db.RatingRequest.due_at.desc())
+                .limit(1)
+            ).first()
+        if rating is None:
+            _save(row, "done", state)
+            return message("rating_thanks")
+
+        try:
+            score = int(dtmf[:1])
+        except ValueError:
+            return menu("rating_prompt", keys="1,2,3,4,5")
+        if score < 1 or score > 5:
+            return menu("rating_prompt", keys="1,2,3,4,5")
+
+        state["score"] = str(score)
+        if score < 5:
+            _save(row, "record_feedback", state)
+            return record(
+                "feedback",
+                max_seconds=30,
+                min_seconds=2,
+                confirm="no",
+                text="אם תוכל לשתף יותר פרטים, נא הקלט כעת",
             )
-            .order_by(db.RatingRequest.due_at.desc())
-            .limit(1)
-        ).first()
-    if rating is None:
+
+        ratings.record_score(session, rating, score)
         _save(row, "done", state)
         return message("rating_thanks")
 
-    try:
-        score = int(dtmf[:1])
-    except ValueError:
-        return menu("rating_prompt", keys="1,2,3,4,5")
-    ratings.record_score(session, rating, score)
+    if row.step == "record_feedback":
+        rating = (
+            session.get(db.RatingRequest, int(state["rating"]))
+            if str(state.get("rating") or "").isdigit()
+            else None
+        )
+        score = int(state["score"]) if state.get("score") and state["score"].isdigit() else None
+        recording_path = params["recording_path"] or params["recording"]
+        if rating is not None and score is not None:
+            ratings.record_score(session, rating, score, feedback_url=recording_path or None)
+        _save(row, "done", state)
+        return message("rating_thanks")
+
     _save(row, "done", state)
     return message("rating_thanks")

@@ -121,13 +121,20 @@ def place_call(session: Session, request: db.RatingRequest) -> dict:
     return {"called": True, "status": request.status}
 
 
-def record_score(session: Session, request: db.RatingRequest, score: int) -> dict:
+def record_score(
+    session: Session,
+    request: db.RatingRequest,
+    score: int,
+    *,
+    feedback_url: str | None = None,
+) -> dict:
     """Digits outside 1-5 are the caller mistyping, not a rating."""
     if score < 1 or score > 5:
         return {"ok": False, "error": "דירוג חייב להיות בין 1 ל-5"}
     if request.status == STATUS_DONE:
         return {"ok": False, "error": "כבר דורג"}
     request.score = score
+    request.feedback_recording_url = feedback_url or request.feedback_recording_url
     request.status = STATUS_DONE
     request.answered_at = datetime.utcnow()
     driver = session.get(db.Driver, request.driver_id) if request.driver_id else None
@@ -138,7 +145,7 @@ def record_score(session: Session, request: db.RatingRequest, score: int) -> dic
         "rating_recorded",
         entity="rating",
         entity_id=request.id,
-        detail=f"order {request.order_id} score {score}",
+        detail=f"order {request.order_id} score {score} feedback={bool(feedback_url)}",
     )
     return {"ok": True, "score": score}
 

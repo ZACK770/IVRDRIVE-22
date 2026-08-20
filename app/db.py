@@ -306,6 +306,7 @@ class RatingRequest(Base):
     status: Mapped[str] = mapped_column(String(16), default="scheduled", index=True)
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     score: Mapped[int | None] = mapped_column(Integer)
+    feedback_recording_url: Mapped[str | None] = mapped_column(Text)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
