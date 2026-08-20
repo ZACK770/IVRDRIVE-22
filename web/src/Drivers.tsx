@@ -7,8 +7,17 @@ const STATUS_LABEL: Record<string, string> = {
   active: "פעיל",
   paused: "מושהה",
   suspended: "מושעה",
-  removed: "הוסר",
 };
+
+const statusClass = (status: string) => {
+  if (status === "active") return "status-ok";
+  if (status === "pending") return "status-warn";
+  if (status === "suspended" || status === "removed") return "status-bad";
+  return "status-muted";
+};
+
+const ACTIVE_STATUSES = ["pending", "suspended"];
+const NON_EDITABLE_STATUSES = ["removed"];
 
 //: Just enough to make the field a picker rather than a blank box; anything
 //: else is still typed by hand.
@@ -27,6 +36,9 @@ const empty = (): Partial<Driver> => ({
   smartphone: true,
   seats: 4,
 });
+
+const statusOptions = () =>
+  Object.entries(STATUS_LABEL).filter(([value]) => !NON_EDITABLE_STATUSES.includes(value));
 
 function normalizePhone(phone: string) {
   return phone.replace(/\D/g, "");
@@ -81,6 +93,7 @@ function DriverForm({
   const [form, setForm] = useState<Partial<Driver>>(driver);
   const [areasText, setAreasText] = useState((driver.areas ?? []).join(", "));
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const chosen = useMemo(() => parseAreas(areasText), [areasText]);
 
   const toggleArea = (name: string) =>
@@ -98,6 +111,7 @@ function DriverForm({
 
   const submit = () => {
     setError("");
+    setSuccess("");
     const payload = { ...form, areas: chosen };
     const message = validateDriver(payload);
     if (message) {
@@ -106,16 +120,28 @@ function DriverForm({
     }
     api
       .saveDriver(payload)
-      .then(onDone)
+      .then(() => {
+        setSuccess("הנהג נשמר בהצלחה");
+        setTimeout(onDone, 900);
+      })
       .catch((err: Error) => setError(err.message));
   };
 
   const isNew = !form.id;
+  const currentStatus = form.status ?? "pending";
 
   return (
     <div className="panel">
-      <h2>{isNew ? "נהג חדש" : `עריכת נהג ${form.phone}`}</h2>
+      <h2>
+        {isNew ? "נהג חדש" : `עריכת נהג ${form.phone}`}
+        {!isNew && (
+          <span className={`status-badge ${statusClass(currentStatus)}`}>
+            {STATUS_LABEL[currentStatus] ?? currentStatus}
+          </span>
+        )}
+      </h2>
       {error && <div className="error">{error}</div>}
+      {success && <div className="success">{success}</div>}
       <div className="grid">
         <label>
           טלפון
@@ -232,7 +258,7 @@ function DriverForm({
         <label>
           סטטוס
           <select value={form.status ?? "pending"} onChange={(e) => field("status", e.target.value)}>
-            {Object.entries(STATUS_LABEL).map(([value, label]) => (
+            {statusOptions().map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>
@@ -296,19 +322,26 @@ export function Drivers() {
   const areaNames = useMemo(() => (areas.data ?? []).map((area) => area.name), [areas.data]);
   const [editing, setEditing] = useState<Partial<Driver> | null>(null);
   const [note, setNote] = useState("");
+  const [noteType, setNoteType] = useState<"ok" | "error">("ok");
 
   const act = (promise: Promise<unknown>, message: string) =>
     promise
       .then(() => {
         setNote(message);
+        setNoteType("ok");
         refresh();
       })
-      .catch((err: Error) => setNote(err.message));
+      .catch((err: Error) => {
+        setNote(err.message);
+        setNoteType("error");
+      });
 
   return (
     <>
       <h1>נהגים</h1>
-      {(error || note) && <div className={error ? "error" : "muted"}>{error || note}</div>}
+      {(error || note) && (
+        <div className={error || noteType === "error" ? "error" : "success"}>{error || note}</div>
+      )}
       <div className="row">
         <button className="action" onClick={() => setEditing(empty())}>
           נהג חדש
@@ -357,14 +390,34 @@ export function Drivers() {
                 {driver.last_area ?? "—"}
                 {driver.last_area_at ? ` · ${clock(driver.last_area_at)}` : ""}
               </td>
-              <td data-label="סטטוס">{STATUS_LABEL[driver.status] ?? driver.status}</td>
+              <td data-label="סטטוס">
+                <span className={`status-badge ${statusClass(driver.status)}`}>
+                  {STATUS_LABEL[driver.status] ?? driver.status}
+                </span>
+              </td>
               <td>
                 <button onClick={() => setEditing(driver)}>עריכה</button>
+                {ACTIVE_STATUSES.includes(driver.status) && (
+                  <button
+                    className="action"
+                    onClick={() =>
+                      act(api.saveDriver({ id: driver.id, status: "active" }), "הנהג אושר והופעל")
+                    }
+                  >
+                    אשר
+                  </button>
+                )}
                 <button onClick={() => act(api.driverFlash(driver.id), "צינתוק נשלח")}>
                   צינתוק
                 </button>
-                <button onClick={() => act(api.removeDriver(driver.id), "הנהג הוסר")}>
-                  הסרה
+                <button
+                  onClick={() => {
+                    if (window.confirm("השעיית נהג תמנע ממנו לקבל נסיעות. להמשיך?")) {
+                      act(api.removeDriver(driver.id), "הנהג הושעה");
+                    }
+                  }}
+                >
+                  השעה
                 </button>
               </td>
             </tr>

@@ -215,6 +215,53 @@ textarea {
   margin-bottom: 1rem;
 }
 
+.success {
+  background: rgba(53, 196, 139, 0.12);
+  border: 1px solid var(--ok);
+  color: var(--ok);
+  padding: 0.6rem 0.8rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  border: 1px solid transparent;
+}
+
+.status-ok {
+  background: rgba(53, 196, 139, 0.15);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.status-warn {
+  background: rgba(242, 181, 68, 0.15);
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.status-bad {
+  background: rgba(239, 100, 97, 0.15);
+  color: var(--bad);
+  border-color: var(--bad);
+}
+
+.status-muted {
+  background: rgba(147, 161, 189, 0.15);
+  color: var(--muted);
+  border-color: var(--muted);
+}
+
+.panel h2 .status-badge {
+  margin-inline-start: 0.6rem;
+  font-size: 0.7rem;
+  vertical-align: middle;
+}
+
 /* A form or a drilled-into record, set apart from the list it came from. */
 .panel {
   background: var(--panel);
