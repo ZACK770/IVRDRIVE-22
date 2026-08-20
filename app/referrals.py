@@ -3,8 +3,8 @@
 The rules exist to stop the obvious abuse of a referral scheme, so they are
 enforced here rather than in the UI:
 
-* only a number the system has never seen can be referred, which keeps existing
-  passengers from being re-claimed;
+* only a number that has never been a passenger (no customer/order history)
+  can be referred, which keeps existing passengers from being re-claimed;
 * the invited number confirms by ringing in itself within 24 hours, so nobody
   can enrol a stranger;
 * the referrer earns on that number's rides for 30 days from confirmation;
@@ -33,13 +33,12 @@ STATUS_EXPIRED = "expired"
 
 
 def _known_number(session: Session, phone: str) -> bool:
-    """"Not in the list" means the number is unknown to the business: no
-    customer record, no order, and not a driver."""
+    """A number is already "known" as a passenger if it has a customer record
+    or at least one order from that phone. A driver who never called in to
+    book a ride may still be invited."""
     if session.scalars(select(db.Customer.id).where(db.Customer.phone == phone)).first():
         return True
-    if session.scalars(select(db.Order.id).where(db.Order.phone == phone)).first():
-        return True
-    return bool(session.scalars(select(db.Driver.id).where(db.Driver.phone == phone)).first())
+    return bool(session.scalars(select(db.Order.id).where(db.Order.phone == phone)).first())
 
 
 def assign(

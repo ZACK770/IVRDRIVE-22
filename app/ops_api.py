@@ -107,15 +107,15 @@ def update_driver(driver_id: int, payload: Payload, actor: Actor) -> dict:
 
 @router.delete("/drivers/{driver_id}")
 def remove_driver(driver_id: int, actor: Actor) -> dict:
-    """Removal is a status change, never a delete: the driver's finished rides
+    """Suspension is a status change, never a delete: the driver's finished rides
     are still on the books and still owe commission."""
     with db.session_scope() as session:
         driver = session.get(db.Driver, driver_id)
         if driver is None:
             raise HTTPException(status_code=404, detail="no such driver")
-        driver.status = "removed"
+        driver.status = "suspended"
         db.log_action(
-            session, "driver_removed", actor=actor, entity="driver", entity_id=driver.id
+            session, "driver_suspended", actor=actor, entity="driver", entity_id=driver.id
         )
         return {"ok": True, "id": driver_id, "status": driver.status}
 

@@ -44,8 +44,8 @@ def test_driver_crud_and_removal_keeps_the_record(client):
     assert (updated["status"], updated["seats"], updated["name"]) == ("active", 7, "דוד")
 
     removed = client.delete(f"/api/drivers/{created['id']}").json()
-    assert removed["status"] == "removed"
-    assert client.get("/api/drivers").json()["drivers"][0]["status"] == "removed"
+    assert removed["status"] == "suspended"
+    assert client.get("/api/drivers").json()["drivers"][0]["status"] == "suspended"
 
 
 def test_the_dispatcher_can_open_a_filtered_tender(client):

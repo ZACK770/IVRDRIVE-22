@@ -6,6 +6,7 @@ const STATUS_LABEL: Record<string, string> = {
   pending: "ממתין לאישור",
   active: "פעיל",
   paused: "מושהה",
+  suspended: "מושעה",
   removed: "הוסר",
 };
 
