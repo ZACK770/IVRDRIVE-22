@@ -44,12 +44,9 @@ def _flag(name: str) -> bool:
 #: Dialling is opt-in. `makeCall` needs no apiKey — only a whitelisted IP — so
 #: an unconfigured deployment would happily ring real drivers; the client
 #: therefore logs what it would have sent unless the operator says otherwise.
-#: `PBX_LIVE=1` enables flash calls on an IP-whitelisted host with no apiKey.
-DRY_RUN = (
-    True
-    if _flag("PBX_DRY_RUN")
-    else not (_flag("PBX_LIVE") or bool(os.getenv("PBX_API_KEY")))
-)
+#: `PBX_LIVE=1` overrides `PBX_DRY_RUN` and enables flash calls on an
+#: IP-whitelisted host with no apiKey. No flag means dry-run.
+DRY_RUN = not (_flag("PBX_LIVE") or bool(os.getenv("PBX_API_KEY")))
 TIMEOUT_S = float(os.getenv("PBX_TIMEOUT_S", "10"))
 #: The PBX's own limit; we stay one second clear of it.
 DEBOUNCE_SECONDS = int(os.getenv("PBX_FLASH_DEBOUNCE_S", "125"))
