@@ -13,6 +13,8 @@ import os
 
 import edge_tts
 
+from app import drivers
+
 log = logging.getLogger("tts")
 
 VOICE = os.getenv("TTS_VOICE", "he-IL-AvriNeural")
@@ -77,6 +79,27 @@ def registration_text(*, car_year: int | None, seats: int | None, area: str | No
     return " ".join(parts)
 
 
+def reputation_text(driver: drivers.db.Driver) -> str:
+    """Read the driver the real general score and its components.
+
+    The general score is what decides the tier and what the driver hears when
+    they ask for their reputation, so this is the canonical voice summary."""
+    score = drivers.general_score(driver)
+    _, label = drivers.tier_of(driver)
+    parts = [f"המוניטין שלך הוא {label} עם ציון {score:.0f} ממאה."]
+    rating = drivers.average_rating(driver)
+    if rating is not None and driver.rating_count:
+        parts.append(f"דירוג ממוצע {rating:.1f} מתוך {driver.rating_count} דירוגים.")
+    else:
+        parts.append("עדיין אין דירוגים מנוסעים.")
+    parts.append(f"ביצעת {driver.rides_done or 0} נסיעות.")
+    if driver.car_year and driver.car_model:
+        parts.append(f"רכב {driver.car_model} משנת {driver.car_year} עם {driver.seats or 0} מקומות.")
+    elif driver.car_year:
+        parts.append(f"שנת רכב {driver.car_year} עם {driver.seats or 0} מקומות.")
+    return " ".join(parts)
+
+
 #: Prompts for the static PBX audio library. The key is the logical name used
 #: in the code; the file written to disk is the PBX audio-library name, which
 #: defaults to the value in ``app/ivr.DEFAULT_AUDIO``.
@@ -103,10 +126,6 @@ AUDIO_TEXTS: dict[str, str] = {
     "driver_taken": "מצטערים, הנסיעה כבר נתפסה על ידי נהג אחר.",
     "driver_no_offer": "כרגע אין הצעה פתוחה בשטח. נסה שוב מאוחר יותר.",
     "driver_connecting": "מזל טוב, זכית בנסיעה. מחבר אותך עכשיו לנוסע.",
-    "driver_reputation": (
-        "המוניטין שלך נבנה מדירוגי נוסעים, ותק, גיל, רכב וכמות נסיעות. "
-        "לפרטים פרטיים תקבל הודעת טקסט."
-    ),
     "driver_areas_menu": (
         "להוספת אזור הקש 1. להסרת אזור הקש 2. "
         "לשמיעת האזורים שלך הקש 3. ליציאה הקש 4."

@@ -8,18 +8,44 @@ actually needs them, which keeps the first response fast.
 from __future__ import annotations
 
 import logging
+import re
 import threading
 from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
 
-from app import db, dispatch, loyalty, notify, pbx, referrals
+from app import db, dispatch, drivers, loyalty, notify, pbx, referrals
 
 log = logging.getLogger("tools")
 
 #: A caller who redials within this window is treated as continuing one errand.
 RECENT_CALL_MINUTES = 10
+
+
+def _normalise_place(name: str) -> str:
+    return "".join(c for c in (name or "") if c not in "-,.'\"()[]/").replace(" ", "").lower()
+
+
+def _extract_price_from_text(text: str, origin: str, destination: str) -> int | None:
+    """Scan a Hebrew price knowledge block for a route and a price."""
+    if not text:
+        return None
+    target_origin = _normalise_place(origin)
+    target_destination = _normalise_place(destination)
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        normalised = _normalise_place(line)
+        # Match the route in either direction.
+        if target_origin in normalised and target_destination in normalised:
+            # Find the first integer that looks like a price (typically at the end).
+            numbers = [int(n) for n in re.findall(r"\d+", line) if int(n) > 10]
+            if numbers:
+                return numbers[-1]
+    return None
+
 
 DECLARATIONS: list[dict[str, Any]] = [
     {
@@ -44,6 +70,57 @@ DECLARATIONS: list[dict[str, Any]] = [
         "name": "get_points",
         "description": ("מצב הניקוד של המתקשר במועדון הנוסעים, וכמה נקודות חסרות לנסיעת חינם."),
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
+    },
+    {
+        "name": "get_driver_reputation",
+        "description": (
+            "מוניטין אמיתי של נהג לפי מספר טלפון: ציון כללי, דירוג, מספר נסיעות, "
+            "שנת רכב, דגם וסטטוס. השתמש בזה כשנהג שואל על המוניטין או הציון שלו."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phone": {
+                    "type": "string",
+                    "description": "מספר טלפון. השאר ריק למתקשר הנוכחי.",
+                }
+            },
+        },
+    },
+    {
+        "name": "get_passenger_ride_history",
+        "description": (
+            "היסטוריית נסיעות אחרונות של נוסע לפי מספר טלפון. "
+            "מחזירה מוצא, יעד, מחיר, סטטוס ותאריך. השתמש בזה כשהלקוח שואל על נסיעות קודמות."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "phone": {
+                    "type": "string",
+                    "description": "מספר טלפון. השאר ריק למתקשר הנוכחי.",
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "כמה נסיעות להחזיר. ברירת מחדל: 5.",
+                },
+            },
+        },
+    },
+    {
+        "name": "lookup_price",
+        "description": (
+            "בדיקת מחיר למסלול מוצא-יעד. מחפש תחילה ברשימת המחירים המוגדרת, "
+            "ואם אין שם — מחשב ממחירי הזמנות קודמות."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "origin": {"type": "string", "description": "כתובת מוצא"},
+                "destination": {"type": "string", "description": "כתובת יעד"},
+            },
+            "required": ["origin", "destination"],
+        },
     },
     {
         "name": "save_order",
@@ -171,6 +248,9 @@ class ToolContext:
             "get_customer": self._get_customer,
             "get_recent_call": self._get_recent_call,
             "get_points": self._get_points,
+            "get_driver_reputation": self._get_driver_reputation,
+            "get_passenger_ride_history": self._get_passenger_ride_history,
+            "lookup_price": self._lookup_price,
             "save_order": self._save_order,
             "hangup_call": self._hangup_call,
             "transfer_to_representative": self._transfer_to_representative,
@@ -252,6 +332,91 @@ class ToolContext:
             "can_redeem": balance >= cost,
             "missing": max(0, cost - balance),
         }
+
+    def _get_driver_reputation(self, args: dict[str, Any]) -> dict[str, Any]:
+        phone = db.normalize_phone(args.get("phone") or self.caller)
+        with db.session_scope() as session:
+            driver = drivers.get_by_phone(session, phone)
+            if driver is None:
+                return {"found": False, "phone": phone}
+            score = drivers.general_score(driver)
+            _, tier_label = drivers.tier_of(driver)
+            avg = drivers.average_rating(driver)
+            return {
+                "found": True,
+                "phone": phone,
+                "status": driver.status,
+                "general_score": score,
+                "tier": tier_label,
+                "average_rating": avg,
+                "rating_count": driver.rating_count,
+                "rides_done": driver.rides_done,
+                "car_model": driver.car_model,
+                "car_year": driver.car_year,
+                "seats": driver.seats,
+            }
+
+    def _get_passenger_ride_history(self, args: dict[str, Any]) -> dict[str, Any]:
+        phone = db.normalize_phone(args.get("phone") or self.caller)
+        limit = int(args.get("limit") or 5)
+        with db.session_scope() as session:
+            rows = session.scalars(
+                select(db.Order)
+                .where(db.Order.phone == phone)
+                .order_by(db.Order.created_at.desc())
+                .limit(limit)
+            ).all()
+            rides = [
+                {
+                    "origin": row.origin,
+                    "destination": row.destination,
+                    "price": row.price,
+                    "status": row.status,
+                    "created_at": row.created_at.isoformat() if row.created_at else None,
+                }
+                for row in rows
+            ]
+        return {"found": bool(rides), "phone": phone, "rides": rides}
+
+    def _lookup_price(self, args: dict[str, Any]) -> dict[str, Any]:
+        origin = (args.get("origin") or "").strip()
+        destination = (args.get("destination") or "").strip()
+        if not origin or not destination:
+            return {"found": False, "error": "חסר מוצא או יעד"}
+
+        # 1. Try the configured price knowledge.
+        botconfig = db.get_botconfig()
+        knowledge = (botconfig.get("knowledge") or "").lower()
+        price = _extract_price_from_text(knowledge, origin, destination)
+        if price is not None:
+            return {"found": True, "origin": origin, "destination": destination, "price": price}
+
+        # 2. Fall back to the average of recent completed orders.
+        with db.session_scope() as session:
+            since = datetime.utcnow() - timedelta(days=90)
+            rows = session.scalars(
+                select(db.Order)
+                .where(
+                    db.Order.origin.ilike(f"%{origin}%"),
+                    db.Order.destination.ilike(f"%{destination}%"),
+                    db.Order.status == "done",
+                    db.Order.price != None,
+                    db.Order.created_at >= since,
+                )
+                .order_by(db.Order.created_at.desc())
+                .limit(20)
+            ).all()
+            prices = [float(row.price) for row in rows if row.price is not None]
+            if prices:
+                return {
+                    "found": True,
+                    "origin": origin,
+                    "destination": destination,
+                    "price": round(sum(prices) / len(prices), 0),
+                    "based_on": len(prices),
+                }
+
+        return {"found": False, "origin": origin, "destination": destination}
 
     def _save_order(self, args: dict[str, Any]) -> dict[str, Any]:
         with db.session_scope() as session:

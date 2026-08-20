@@ -184,7 +184,7 @@ class CallBridge:
         if not result.get("ok"):
             log.warning("[%s] transfer failed: %s", self._cap.call_id, result)
             await self._session.send_text(
-                "אמור בקצרה: לא מוגדר מספר נציג כרגע, נציג יחזור אליך בהקדם. סיים את השיחה."
+                "אמור בקצרה: שירות הנציגים לא זמין כרגע. אין אפשרות להעביר. סיים את השיחה."
             )
             self._hangup_after_response = True
             return

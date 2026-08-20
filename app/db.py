@@ -496,7 +496,11 @@ DEFAULT_BOTCONFIG: dict = {
         "את הבקשה אבל שייוודא את זה גם מול הנהג.\n"
         "כל תשובה היא משפט אחד קצר, עד כ-12 מילים, ובו שאלה אחת בלבד.\n"
         "אל תפתח בהקדמה, אל תסביר מה אתה יכול או לא יכול לעשות, ואל תחזור על כל הפרטים שנאספו.\n"
-        "אל תמציא שום פרט: לא מחיר, לא זמן הגעה ולא זמינות נהג."
+        "אל תמציא שום פרט: לא מחיר, לא זמן הגעה ולא זמינות נהג.\n"
+        "כשלקוח שואל על נקודות — קרא ל-get_points. "
+        "כשנהג שואל על מוניטין — קרא ל-get_driver_reputation. "
+        "כשלקוח שואל על נסיעות קודמות — קרא ל-get_passenger_ride_history. "
+        "כשצריך מחיר — קרא ל-lookup_price ואל תנחש."
     ),
     "guidelines": (
         "היה אנושי וענייני, אדיב יעיל ומהיר. ניסוח קצר ומתומצת. "
@@ -518,6 +522,13 @@ DEFAULT_BOTCONFIG: dict = {
         "transfer_to_representative",
         "save_order",
         "get_recent_call",
+        "get_customer",
+        "get_points",
+        "get_driver_reputation",
+        "get_passenger_ride_history",
+        "lookup_price",
+        "redeem_order",
+        "create_referral",
     ],
     "questionnaire": [
         {
@@ -544,10 +555,23 @@ DEFAULT_BOTCONFIG: dict = {
         {
             "id": "price_confirm",
             "question": "המחיר הוא {{מחיר}}. האם מקובל עליך?",
-            "instructions": "את המחיר אתה לוקח ממאגר הידע לנציג.",
+            "instructions": "את המחיר אתה לוקח מ-lookup_price. אם הכלי מחזיר found=false, אמור ללקוח שההזמנה תועבר לנהג עם הצעת מחיר.",
         },
     ],
-    "q_and_a": [],
+    "q_and_a": [
+        {
+            "question": "כמה נקודות יש לי?",
+            "answer": "קרא ל-get_points וענה ללקוח את היתרה וכמה נקודות חסרות לנסיעה חינם.",
+        },
+        {
+            "question": "מה המוניטין שלי?",
+            "answer": "קרא ל-get_driver_reputation וענה לנהג את הציון, הדירוג, מספר הנסיעות ופרטי הרכב.",
+        },
+        {
+            "question": "מה ההיסטוריה שלי?",
+            "answer": "קרא ל-get_passenger_ride_history וספר ללקוח את הנסיעות האחרונות.",
+        },
+    ],
 }
 
 

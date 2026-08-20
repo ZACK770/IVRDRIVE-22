@@ -55,7 +55,6 @@ DEFAULT_AUDIO = {
     "driver_register": "drivers_register",
     "driver_pending": "drivers_pending",
     "driver_saved": "drivers_saved",
-    "driver_reputation": "drivers_reputation",
     "driver_area_prompt": "drivers_area_prompt",
     "driver_quiet_prompt": "drivers_quiet_prompt",
     "driver_location_prompt": "drivers_location_prompt",
@@ -548,7 +547,7 @@ def _driver_menu_choice(
         return menu("driver_offer", keys="1", text=offer)
     if dtmf == "2":  # reputation
         _save(row, "done", state)
-        return message("driver_reputation")
+        return say(tts.reputation_text(driver))
     if dtmf == "3":  # preferred areas
         _save(row, "areas", state)
         return menu("driver_areas_menu", keys="1,2,3,4")
