@@ -37,6 +37,9 @@ services:
       # Flash calls stay simulated until Technoline allowlists this service's
       # IP and someone flips this off deliberately.
       - key: PBX_DRY_RUN
+        value: "0"
+      # Set PBX_LIVE=1 and PBX_DRY_RUN=0 once the IP is whitelisted.
+      - key: PBX_LIVE
         value: "1"
       - key: PBX_API_KEY
         sync: false
