@@ -53,6 +53,30 @@ def offer_text(order) -> str:
     return " ".join(parts)
 
 
+def area_menu_text(prompt: str, names: list[str]) -> str:
+    """Read the areas out with their menu digits. The numbering comes from the
+    areas table, so the caller has to hear it — a recorded list would go stale
+    the first time the office adds an area."""
+    if not names:
+        return AUDIO_TEXTS["driver_no_areas"]
+    options = " ".join(f"לאזור {name} הקש {index}." for index, name in enumerate(names, 1))
+    return f"{prompt} {options}"
+
+
+def registration_text(*, car_year: int | None, seats: int | None, area: str | None) -> str:
+    """Read the collected details back before the pending-approval notice, so a
+    wrong digit is caught on the call rather than by the office."""
+    parts = ["הפרטים שנרשמו:"]
+    if car_year:
+        parts.append(f"שנת רכב {car_year}.")
+    if seats:
+        parts.append(f"{seats} מקומות.")
+    if area:
+        parts.append(f"אזור {area}.")
+    parts.append(AUDIO_TEXTS["driver_pending"])
+    return " ".join(parts)
+
+
 #: Prompts for the static PBX audio library. The key is the logical name used
 #: in the code; the file written to disk is the PBX audio-library name, which
 #: defaults to the value in ``app/ivr.DEFAULT_AUDIO``.
@@ -67,6 +91,11 @@ AUDIO_TEXTS: dict[str, str] = {
         "לסיום נסיעה הקש 6."
     ),
     "driver_register": "כדי להירשם כנהג, הקש 1 ולאחר מכן תועבר להשלמת פרטים.",
+    "driver_ask_car_year": "הקש את שנת הרכב בארבע ספרות. לדוגמה, אלפיים עשרים ואחת.",
+    "driver_ask_seats": "הקש את מספר המקומות ברכב, ספרה אחת, לא כולל הנהג.",
+    "driver_ask_birth_year": "הקש את שנת הלידה שלך בארבע ספרות.",
+    "driver_ask_quiet_to": "הקש את שעת הסיום של שעות השקט, בשתי ספרות.",
+    "driver_invalid_input": "הקשה לא תקינה. ננסה שוב.",
     "driver_saved": "הפרטים נשמרו. תודה.",
     "driver_pending": "הרישום שלך ממתין לאישור המשרד. תוכל לחזור מאוחר יותר.",
     "driver_offer": "התקבלה הצעת נסיעה באזור שלך. אם אתה מעוניין, הקש 1.",
@@ -91,6 +120,7 @@ AUDIO_TEXTS: dict[str, str] = {
     "driver_area_not_found": "האזור אינו ברשימה.",
     "driver_quiet_prompt": "הגדר שעות שקט. הקש את שעת ההתחלה בשתי ספרות.",
     "driver_location_prompt": "הקש את מספר האזור שבו אתה נמצא כרגע.",
+    "driver_no_areas": "אין אזורים מוגדרים במערכת. פנה למשרד.",
     "driver_location_done": "המיקום נשמר. תודה.",
     "driver_finish_done": "הנסיעה סומנה כבוצעה. ניקוד, דירוג ועמלה יעודכנו אוטומטית.",
     "passenger_menu": (

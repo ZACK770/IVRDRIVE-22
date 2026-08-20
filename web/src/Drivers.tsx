@@ -9,6 +9,17 @@ const STATUS_LABEL: Record<string, string> = {
   removed: "הוסר",
 };
 
+//: Just enough to make the field a picker rather than a blank box; anything
+//: else is still typed by hand.
+const CAR_MODELS = [
+  "טויוטה קורולה",
+  "יונדאי i35",
+  "קיה ספורטג'",
+  "מרצדס ויאנו",
+  "פולקסווגן קאדי",
+  "סקודה אוקטביה",
+];
+
 const empty = (): Partial<Driver> => ({
   phone: "",
   status: "pending",
@@ -47,9 +58,36 @@ function validateDriver(form: Partial<Driver>): string {
   return "";
 }
 
-function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () => void }) {
+/** Areas are typed as free text and only split on save, so a space or a
+ *  half-typed name survives the keystroke that produced it. */
+function parseAreas(text: string): string[] {
+  const seen = new Set<string>();
+  return text
+    .split(",")
+    .map((area) => area.trim())
+    .filter((area) => area && !seen.has(area) && seen.add(area));
+}
+
+function DriverForm({
+  driver,
+  areaNames,
+  onDone,
+}: {
+  driver: Partial<Driver>;
+  areaNames: string[];
+  onDone: () => void;
+}) {
   const [form, setForm] = useState<Partial<Driver>>(driver);
+  const [areasText, setAreasText] = useState((driver.areas ?? []).join(", "));
   const [error, setError] = useState("");
+  const chosen = useMemo(() => parseAreas(areasText), [areasText]);
+
+  const toggleArea = (name: string) =>
+    setAreasText(
+      (chosen.includes(name) ? chosen.filter((area) => area !== name) : [...chosen, name]).join(
+        ", ",
+      ),
+    );
 
   const field = (key: keyof Driver, value: string | number | boolean | string[] | null) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -59,13 +97,14 @@ function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () =>
 
   const submit = () => {
     setError("");
-    const message = validateDriver(form);
+    const payload = { ...form, areas: chosen };
+    const message = validateDriver(payload);
     if (message) {
       setError(message);
       return;
     }
     api
-      .saveDriver(form)
+      .saveDriver(payload)
       .then(onDone)
       .catch((err: Error) => setError(err.message));
   };
@@ -82,18 +121,27 @@ function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () =>
           <input
             value={form.phone ?? ""}
             disabled={!isNew}
+            type="tel"
+            inputMode="tel"
+            dir="ltr"
+            autoComplete="tel"
             placeholder="למשל 0521234567"
             onChange={(e) => field("phone", e.target.value)}
           />
         </label>
         <label>
           שם
-          <input value={form.name ?? ""} onChange={(e) => field("name", e.target.value)} />
+          <input
+            value={form.name ?? ""}
+            autoComplete="name"
+            onChange={(e) => field("name", e.target.value)}
+          />
         </label>
         <label>
           דגם רכב
           <input
             value={form.car_model ?? ""}
+            list="car-models"
             placeholder="למשל סיאנה, טסלה, אקסנט"
             onChange={(e) => field("car_model", e.target.value)}
           />
@@ -130,25 +178,33 @@ function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () =>
           אזור מגורים / בית
           <input
             value={form.home_area ?? ""}
+            list="areas"
             placeholder="למשל ירושלים"
             onChange={(e) => field("home_area", e.target.value)}
           />
         </label>
-        <label>
+        <label className="wide">
           אזורים מועדפים (מופרדים בפסיק)
           <input
-            value={(form.areas ?? []).join(", ")}
+            value={areasText}
+            list="areas"
             placeholder="ירושלים, בני ברק, תל אביב"
-            onChange={(e) =>
-              field(
-                "areas",
-                e.target.value
-                  .split(",")
-                  .map((a) => a.trim())
-                  .filter(Boolean),
-              )
-            }
+            onChange={(e) => setAreasText(e.target.value)}
           />
+          {areaNames.length > 0 && (
+            <span className="chips">
+              {areaNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={chosen.includes(name) ? "chip on" : "chip"}
+                  onClick={() => toggleArea(name)}
+                >
+                  {name}
+                </button>
+              ))}
+            </span>
+          )}
         </label>
         <label>
           שעות שקט (משעה)
@@ -207,6 +263,18 @@ function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () =>
           />
         </label>
       </div>
+      {/* The console is the only place these names are ever typed, so the
+          suggestions come from the areas the office already defined. */}
+      <datalist id="areas">
+        {areaNames.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <datalist id="car-models">
+        {CAR_MODELS.map((model) => (
+          <option key={model} value={model} />
+        ))}
+      </datalist>
       <div className="row">
         <button className="action" onClick={submit}>
           שמור
@@ -220,6 +288,11 @@ function DriverForm({ driver, onDone }: { driver: Partial<Driver>; onDone: () =>
 export function Drivers() {
   const load = useCallback(() => api.drivers(), []);
   const { data, error, refresh } = usePoll<Driver[]>(load, 20);
+  const areas = usePoll<Area[]>(
+    useCallback(() => api.areas(), []),
+    60,
+  );
+  const areaNames = useMemo(() => (areas.data ?? []).map((area) => area.name), [areas.data]);
   const [editing, setEditing] = useState<Partial<Driver> | null>(null);
   const [note, setNote] = useState("");
 
@@ -243,6 +316,7 @@ export function Drivers() {
       {editing && (
         <DriverForm
           driver={editing}
+          areaNames={areaNames}
           onDone={() => {
             setEditing(null);
             refresh();
@@ -311,7 +385,7 @@ function Areas() {
     if (!form.name.trim()) list.push("שם אזור חובה");
     if (!form.callback_number.trim()) list.push("מספר לחיוג חוזר חובה");
     if (form.flash_cid.trim() && form.flash_cid.trim().length !== 6)
-      list.push("מזהה מתקarel חייב להיות 6 ספרות");
+      list.push("מזהה מתקשר חייב להיות 6 ספרות");
     return list;
   }, [form]);
 
@@ -335,7 +409,7 @@ function Areas() {
           <tr>
             <th>אזור</th>
             <th>מספר לחיוג חוזר</th>
-            <th>מזהה מתקarel</th>
+            <th>מזהה מתקשר</th>
             <th>פעיל</th>
           </tr>
         </thead>
@@ -344,7 +418,7 @@ function Areas() {
             <tr key={area.id}>
               <td data-label="אזור">{area.name}</td>
               <td data-label="מספר לחיוג חוזר">{area.callback_number ?? "—"}</td>
-              <td data-label="מזהה מתקarel">{area.flash_cid ?? "—"}</td>
+              <td data-label="מזהה מתקשר">{area.flash_cid ?? "—"}</td>
               <td data-label="פעיל">{area.active ? "כן" : "לא"}</td>
             </tr>
           ))}
@@ -362,7 +436,7 @@ function Areas() {
           onChange={(e) => setForm({ ...form, callback_number: e.target.value })}
         />
         <input
-          placeholder="מזהה מתקarel לצינתוק (6 ספרות)"
+          placeholder="מזהה מתקשר לצינתוק (6 ספרות)"
           value={form.flash_cid}
           onChange={(e) => setForm({ ...form, flash_cid: e.target.value })}
         />

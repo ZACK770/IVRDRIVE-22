@@ -9,12 +9,19 @@ export const tokenStore = {
   set: (value: string) => localStorage.setItem("drivers.token", value),
 };
 
+/**
+ * HTTP headers are latin-1 only, so a Hebrew dispatcher name reaches the
+ * backend percent-encoded — `fetch` refuses the request outright otherwise.
+ */
+export const headerSafe = (value: string) =>
+  /^[\x20-\x7e]*$/.test(value) ? value : encodeURIComponent(value);
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}${path}`, {
     ...init,
     headers: {
       "content-type": "application/json",
-      "x-admin-token": tokenStore.get(),
+      "x-admin-token": headerSafe(tokenStore.get()),
       ...(init?.headers ?? {}),
     },
   });
@@ -289,7 +296,7 @@ export const actorStore = {
 const write = <T,>(path: string, body: unknown, method = "POST") =>
   request<T>(path, {
     method,
-    headers: { "x-actor": actorStore.get() || "console" },
+    headers: { "x-actor": headerSafe(actorStore.get() || "console") },
     body: JSON.stringify(body ?? {}),
   });
 

@@ -29,6 +29,11 @@ from app import db, drivers, loyalty, pbx, ratings
 
 log = logging.getLogger("dispatch")
 
+#: How long after the award a winner's callback still lands on the ride. Long
+#: enough for a flash call to be noticed and returned, short enough that the
+#: next call is a normal one.
+AWARD_CALLBACK = timedelta(minutes=10)
+
 STATUS_OPEN = "open"
 STATUS_AWARDED = "awarded"
 STATUS_FAILED = "failed"
@@ -247,6 +252,19 @@ def close_tender(session: Session, tender: db.Tender, *, actor: str = "system") 
         order.driver_phone = winner.phone
         if order.status in {"new", "assigned"}:
             order.status = "assigned"
+    session.flush()
+    if not _on_hold_for(session, tender, winner):
+        # A driver who bid from a voice campaign, or whose line dropped during
+        # the window, is not listening to the hold message -- without a ring
+        # back nobody would ever tell them they won.
+        pbx.flash_call(
+            session,
+            winner.phone,
+            cid=_area_cid(session, tender),
+            driver_id=winner.id,
+            tender_id=tender.id,
+            kind="award",
+        )
     db.log_action(
         session,
         "tender_awarded",
@@ -256,6 +274,55 @@ def close_tender(session: Session, tender: db.Tender, *, actor: str = "system") 
         detail=f"driver {winner.id} score {score} of {len(scored)} bids",
     )
     return {"status": STATUS_AWARDED, "driver_id": winner.id, "score": score}
+
+
+def _area_cid(session: Session, tender: db.Tender) -> str:
+    area_row = session.scalars(
+        select(db.Area).where(db.Area.name == (tender.area or ""))
+    ).first()
+    if area_row is not None and area_row.flash_cid:
+        return area_row.flash_cid
+    return pbx.new_cid(tender.id)
+
+
+def _on_hold_for(session: Session, tender: db.Tender, driver: db.Driver) -> bool:
+    """True when the driver is still on the line waiting for this tender's
+    result, in which case the call itself delivers the news."""
+    rows = session.scalars(
+        select(db.IvrSession).where(
+            db.IvrSession.phone == driver.phone,
+            db.IvrSession.step == "await_result",
+            db.IvrSession.updated_at >= datetime.utcnow() - timedelta(minutes=5),
+        )
+    ).all()
+    for row in rows:
+        try:
+            state = json.loads(row.data or "{}")
+        except ValueError:
+            continue
+        if isinstance(state, dict) and int(state.get("tender") or 0) == tender.id:
+            return True
+    return False
+
+
+def awarded_order_for_driver(session: Session, driver: db.Driver) -> db.Order | None:
+    """The ride this driver just won and has not been connected to yet."""
+    tender = session.scalars(
+        select(db.Tender)
+        .where(
+            db.Tender.awarded_driver_id == driver.id,
+            db.Tender.status == STATUS_AWARDED,
+            db.Tender.awarded_at >= datetime.utcnow() - AWARD_CALLBACK,
+        )
+        .order_by(db.Tender.awarded_at.desc())
+        .limit(1)
+    ).first()
+    if tender is None:
+        return None
+    order = session.get(db.Order, tender.order_id)
+    if order is None or order.driver_id != driver.id or order.status != "assigned":
+        return None
+    return order
 
 
 def result_for_driver(session: Session, tender: db.Tender, driver: db.Driver) -> dict:
