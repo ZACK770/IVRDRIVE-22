@@ -14,8 +14,9 @@ import logging
 import os
 import time
 from datetime import datetime
+from typing import Any
 
-from app import audio, capture, cost, db, tools
+from app import audio, capture, cost, db, prompt, tools
 from app.gemini_live import GeminiLiveSession
 
 log = logging.getLogger("bridge")
@@ -29,7 +30,15 @@ SILENCE_FRAME = b"\x00" * FRAME_BYTES
 #: request rate at 10/s instead of 50/s without adding meaningful latency.
 INPUT_BATCH_FRAMES = 5
 
-GREETING = os.getenv("BOT_GREETING", "ברוך הבא למוקד דרייברים, איך אפשר לעזור?")
+GREETING = prompt.GREETING
+
+#: The parallel channel transfer frame is not fully documented. The template is
+#: injected so the operator can change the wire format without a redeploy; the
+#: phone number is the one configured in `representative_extension`.
+TRANSFER_FRAME = os.getenv(
+    "PBX_TRANSFER_FRAME",
+    '{"action":"transfer","phone":"{phone}"}',
+)
 
 
 class CallBridge:
@@ -157,6 +166,9 @@ class CallBridge:
                     )
                     if call["name"] == "hangup_call" and result.get("hung_up"):
                         self._hangup_after_response = True
+                    if call["name"] == "transfer_to_representative":
+                        self._handle_transfer(result)
+                        return
                 await self._session.send_tool_responses(responses)
             elif kind == "usage":
                 self._meter.add(event["usage"])
@@ -166,12 +178,42 @@ class CallBridge:
 
     # ------------------------------------------------------------------- life
 
+    def _handle_transfer(self, result: dict[str, Any]) -> None:
+        """Transfer to the configured extension, or gracefully tell the caller
+        the office will call back and hang up if the PBX does not understand."""
+        if not result.get("ok"):
+            log.warning("[%s] transfer failed: %s", self._cap.call_id, result)
+            return
+        phone = str(result.get("transfer_to") or "")
+        if not phone:
+            return
+        try:
+            frame = TRANSFER_FRAME.format(phone=phone)
+        except Exception:
+            frame = json.dumps({"action": "transfer", "phone": phone})
+        # Best-effort: send the frame the PBX may expect, then close so the call
+        # ends cleanly even if the parallel channel ignores it.
+        try:
+            asyncio.get_running_loop().call_soon(
+                lambda: asyncio.create_task(self._ws.send_text(frame))
+            )
+            log.info("[%s] sent transfer frame: %s", self._cap.call_id, frame)
+        except Exception:
+            log.exception("[%s] failed to send transfer frame", self._cap.call_id)
+        from app import notify
+
+        notify.send_text(
+            f"הלקוח {self._tools.caller} ביקש נציג; בוצעה העברה/סיום שיחה ל-{phone}.",
+            kind="transfer",
+        )
+        self._hangup_after_response = True
+
     async def run(self) -> None:
-        prompt = db.get_prompt("system")
+        system_prompt = db.get_prompt("system")
         if self._tools.caller:
-            prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
+            system_prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
         async with GeminiLiveSession(
-            self._api_key, prompt, tools=tools.DECLARATIONS
+            self._api_key, system_prompt, tools=tools.DECLARATIONS
         ) as session:
             self._session = session
             if GREETING:

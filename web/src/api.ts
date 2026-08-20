@@ -411,10 +411,15 @@ export const api = {
     request<{ ok: boolean }>(`/api/prices/${id}`, { method: "DELETE" }).then((r) => r.ok),
   customers: () =>
     request<{ customers: Customer[] }>("/api/customers").then((r) => r.customers),
-  prompt: () => request<{ content: string }>("/api/prompt").then((r) => r.content),
+  prompt: () =>
+    request<{ content: string; edited: boolean; default: string }>("/api/prompt"),
   savePrompt: (content: string) =>
-    request<{ content: string }>("/api/prompt", {
+    request<{ content: string; edited: boolean; default: string }>("/api/prompt", {
       method: "PUT",
       body: JSON.stringify({ content }),
+    }),
+  resetPrompt: () =>
+    request<{ content: string; edited: boolean; default: string }>("/api/prompt/reset", {
+      method: "POST",
     }),
 };
