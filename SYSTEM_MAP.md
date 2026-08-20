@@ -58,7 +58,7 @@ start
 start
 ├── קודם כל מאשר שיוך רפרל (אם יש) → confirm_by_call
 └── passenger_menu (1-4)
-    ├── 1 — בדיקת יתרת נקודות → מקריאה את היתרה בקול → hangup
+    ├── 1 — בדיקת יתרת קרדיטים → מקריאה את היתרה בקול → hangup
     ├── 2 — מימוש נסיעה חינם → redeem_ride
     ├── 3 — שתפו וסעו       → הקש מספר → flash_call לאישור → hangup
     └── 4 — עדכון העדפות    → hangup (כרגע רק הודעה)
@@ -102,11 +102,11 @@ start → rating_prompt (1-5) → record_score → "תודה" → hangup
 | `POST` | `/api/tenders/{id}/cancel` | ביטול מכרז |
 | `POST` | `/api/orders` | יצירת הזמנה ידנית |
 | `POST` | `/api/orders/{id}/finish` | סיום נסיעה וחישוב ניקוד/דירוג |
-| `POST` | `/api/orders/{id}/cancel` | ביטול הזמנה והחזרת נקודות |
-| `POST` | `/api/orders/{id}/redeem` | מימוש נקודות להזמנה |
+| `POST` | `/api/orders/{id}/cancel` | ביטול הזמנה והחזרת קרדיטים |
+| `POST` | `/api/orders/{id}/redeem` | מימוש קרדיטים להזמנה |
 | `GET` | `/api/club/members` | רשימת חברי מועדון |
-| `GET` | `/api/club/{phone}` | פרטי נוסע + ניקוד |
-| `POST` | `/api/club/{phone}/adjust` | עדכון ידני של ניקוד |
+| `GET` | `/api/club/{phone}` | פרטי נוסע + קרדיטים |
+| `POST` | `/api/club/{phone}/adjust` | עדכון ידני של קרדיטים |
 | `PATCH` | `/api/club/{phone}/preferences` | עדכון העדפות נוסע |
 | `GET` | `/api/referrals` | רשימת שיוכים |
 | `POST` | `/api/referrals` | יצירת שיוך ידני |
@@ -250,7 +250,7 @@ https://app.ipsales.co.il/ivrFilesApi.php
 ### 6.2 פערי תפקוד בקוד
 
 5. **אין העברה לנציג בנתיב IVR (`/ivr/*`)** — רק ה-AI Raw Channel (`/ws/ivr`) תומך בהעברה דרך `transfer_to_representative`. אם השיחות הנכנסות עוברות דרך המודולים הרגילים, אין אפשרות להעביר ל-`representative_phone` או לנתק אוטומטית.
-6. **אין הזמנה חדשה דרך `/ivr/passenger`** — הנוסע יכול רק לבדוק נקודות, לממש, לשייך חבר ולעדכון העדפות. ליצירת הזמנה חדשה דרך טלפון צריך את `/ws/ivr` + Gemini.
+6. **אין הזמנה חדשה דרך `/ivr/passenger`** — הנוסע יכול רק לבדוק קרדיטים, לממש, לשייך חבר ולעדכון העדפות. ליצירת הזמנה חדשה דרך טלפון צריך את `/ws/ivr` + Gemini.
 7. **אין ניהול קבצי אודיו דרך API/UI** — `pbx.upload_file()` ו-`tts.synthesize()` קיימים אך ניתנים לשימוש רק מסקריפטים (`tools/`). אין אנדפוינט להעלות/לנהל את הקבצים ב-PBX.
 8. **אין אנדפוינט לפרטי `Order` בודד** — יש `GET /api/orders` ו-`PATCH /api/orders/{id}` אבל לא `GET /api/orders/{id}`; הקונסולה עובדת ברשימה.
 9. **אין אנדפוינט לדוח הקמפיין/צינתוקים** — `pbx.campaign_report()` רץ רק מה-scheduler. אין דרך למפעיל לראות את מצב הקמפיין או את יומן `FlashCall`.

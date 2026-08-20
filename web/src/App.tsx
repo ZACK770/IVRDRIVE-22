@@ -177,8 +177,8 @@ function Board() {
                 <button onClick={() => act(api.finishOrder(order.id), "הנסיעה נסגרה וזוכתה")}>
                   סיום נסיעה
                 </button>
-                <button onClick={() => act(api.redeemOrder(order.id), "נסיעה שולמה בנקודות")}>
-                  תשלום בנקודות
+                <button onClick={() => act(api.redeemOrder(order.id), "נסיעה שולמה בקרדיטים")}>
+                  תשלום בקרדיטים
                 </button>
               </td>
             </tr>
@@ -459,7 +459,7 @@ export default function App() {
               tokenStore.set(e.target.value);
             }}
           />
-          {/* Written to the action log next to every points movement. */}
+          {/* Written to the action log next to every credit movement. */}
           <input
             placeholder="שם הסדרן"
             value={actor}

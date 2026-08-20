@@ -21,7 +21,7 @@ const ACTION_OPTIONS = [
   { key: "hangup_call", label: "ניתוק שיחה" },
   { key: "transfer_to_representative", label: "העברה לנציג" },
   { key: "get_recent_call", label: "השיחה האחרונה" },
-  { key: "get_points", label: "מועדון נוסעים / נקודות" },
+  { key: "get_points", label: "מועדון נוסעים / קרדיטים" },
   { key: "create_referral", label: "שיוך מספר חדש" },
   { key: "redeem_order", label: "מימוש נסיעת חינם" },
 ];

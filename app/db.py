@@ -106,7 +106,7 @@ class Order(Base):
     special_requests: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     exported: Mapped[bool] = mapped_column(Boolean, default=False)
-    #: Lifecycle spine: loyalty points, driver payouts and the rating call all
+    #: Lifecycle spine: loyalty credits, driver payouts and the rating call all
     #: hang off the order actually reaching `done`.
     status: Mapped[str] = mapped_column(String(24), default="new", index=True)
     driver_name: Mapped[str | None] = mapped_column(String(120))
@@ -114,7 +114,7 @@ class Order(Base):
     driver_id: Mapped[int | None] = mapped_column(Integer, index=True)
     area: Mapped[str | None] = mapped_column(String(120), index=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)
-    #: Points spent to get this ride for free, and the commission the driver
+    #: Credits spent to get this ride for free, and the commission the driver
     #: owes on it — both frozen at completion so later rule changes cannot
     #: rewrite past money.
     points_spent: Mapped[int] = mapped_column(Integer, default=0)
@@ -259,7 +259,7 @@ class FlashCall(Base):
 
 
 class PointsEntry(Base):
-    """Append-only loyalty ledger. The balance is the sum of the rows, so a
+    """Append-only credit ledger. The balance is the sum of the rows, so a
     correction is another row and history is never rewritten."""
 
     __tablename__ = "points_entries"
@@ -278,7 +278,7 @@ class PointsEntry(Base):
 class Referral(Base):
     """'Share and ride': a caller names a number, that number confirms by
     ringing in within 24 hours, and rides it makes for the next 30 days earn
-    the referrer points."""
+    the referrer credits."""
 
     __tablename__ = "referrals"
 
@@ -334,7 +334,7 @@ class ActionLog(Base):
 
 
 class Setting(Base):
-    """Business rules the operator changes without a deploy: gift size, points
+    """Business rules the operator changes without a deploy: gift size, credits
     per shekel, redemption cost, commission."""
 
     __tablename__ = "settings"
@@ -497,7 +497,7 @@ DEFAULT_BOTCONFIG: dict = {
         "כל תשובה היא משפט אחד קצר, עד כ-12 מילים, ובו שאלה אחת בלבד.\n"
         "אל תפתח בהקדמה, אל תסביר מה אתה יכול או לא יכול לעשות, ואל תחזור על כל הפרטים שנאספו.\n"
         "אל תמציא שום פרט: לא מחיר, לא זמן הגעה ולא זמינות נהג.\n"
-        "כשלקוח שואל על נקודות — קרא ל-get_points. "
+        "כשלקוח שואל על קרדיטים — קרא ל-get_points. "
         "כשנהג שואל על מוניטין — קרא ל-get_driver_reputation. "
         "כשלקוח שואל על נסיעות קודמות — קרא ל-get_passenger_ride_history. "
         "כשצריך מחיר — קרא ל-lookup_price ואל תנחש."
@@ -560,8 +560,8 @@ DEFAULT_BOTCONFIG: dict = {
     ],
     "q_and_a": [
         {
-            "question": "כמה נקודות יש לי?",
-            "answer": "קרא ל-get_points וענה ללקוח את היתרה וכמה נקודות חסרות לנסיעה חינם.",
+            "question": "כמה קרדיטים יש לי?",
+            "answer": "קרא ל-get_points וענה ללקוח את היתרה וכמה קרדיטים חסרים לנסיעה חינם.",
         },
         {
             "question": "מה המוניטין שלי?",
@@ -737,7 +737,7 @@ def log_action(
     entity_id: str | int | None = None,
     detail: str | None = None,
 ) -> None:
-    """Every points movement, tender award and driver change leaves a row —
+    """Every credit movement, tender award and driver change leaves a row —
     the club is money, so 'who changed this' has to be answerable."""
     session.add(
         ActionLog(

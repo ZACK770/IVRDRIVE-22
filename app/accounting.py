@@ -2,11 +2,11 @@
 
 Revenue is the office's commission on completed rides, not the fare — the fare
 belongs to the driver, and counting it as income would overstate the business
-several times over. Rides paid for with points earn no commission but still
+several times over. Rides paid for with credits earn no commission but still
 cost the club its liability, so they are reported separately rather than
 quietly dropped.
 
-Outstanding points are a real liability: every unspent point is a future free
+Outstanding credits are a real liability: every unspent credit is a future free
 ride, so the report values them at the current redemption rate.
 """
 

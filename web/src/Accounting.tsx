@@ -44,11 +44,11 @@ export function Accounting() {
         </div>
         <div className="card">
           <b>{books.data?.point_rides ?? "—"}</b>
-          <span>נסיעות בניקוד</span>
+          <span>נסיעות בקרדיט</span>
         </div>
         <div className="card">
           <b>{books.data?.points_outstanding ?? "—"}</b>
-          <span>נקודות שטרם נוצלו ({books.data?.points_liability_rides ?? 0} נסיעות)</span>
+          <span>קרדיטים שטרם נוצלו ({books.data?.points_liability_rides ?? 0} נסיעות)</span>
         </div>
       </div>
 
@@ -121,7 +121,7 @@ export function Accounting() {
                   <td data-label="מוצא">{ride.origin}</td>
                   <td data-label="יעד">{ride.destination}</td>
                   <td data-label="מחיר">
-                    {ride.paid_with_points ? "בניקוד" : `${ride.price.toFixed(0)} ₪`}
+                    {ride.paid_with_points ? "בקרדיט" : `${ride.price.toFixed(0)} ₪`}
                   </td>
                   <td data-label="עמלה">{ride.commission.toFixed(0)} ₪</td>
                 </tr>

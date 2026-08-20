@@ -3,10 +3,10 @@ import { api, type LogRow } from "./api";
 import { clock, usePoll } from "./usePoll";
 
 const LABELS: Record<string, string> = {
-  points_per_shekel: "נקודות לכל שקל",
+  points_per_shekel: "קרדיטים לכל שקל",
   first_ride_gift: "מתנת נסיעה ראשונה",
-  redeem_points: "עלות נסיעת חינם בנקודות",
-  referral_points: "נקודות לכל נסיעה של מספר משויך",
+  redeem_points: "עלות נסיעת חינם בקרדיטים",
+  referral_points: "קרדיטים לכל נסיעה של מספר משויך",
   referral_confirm_hours: "שעות לאישור שיוך",
   referral_credit_days: "ימי זיכוי לאחר אישור",
   tender_window_seconds: "חלון הצעות (שניות)",
@@ -63,7 +63,7 @@ export function Settings() {
   );
 }
 
-/** Every points movement and driver change is here; the club is money, so the
+/** Every credit movement and driver change is here; the club is money, so the
  *  office needs to be able to answer "who did this". */
 function Logs() {
   const [action, setAction] = useState("");

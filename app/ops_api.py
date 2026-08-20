@@ -7,7 +7,7 @@ same ``/api`` prefix behind the same token, so the console sees one API.
 
 Money-moving endpoints take an actor from the ``X-Actor`` header and write it
 to the action log. It is not authentication (the shared admin token is that),
-it is attribution: "who gave this passenger 500 points" has to be answerable.
+it is attribution: "who gave this passenger 500 credits" has to be answerable.
 """
 
 from __future__ import annotations
@@ -406,8 +406,8 @@ def finish_order(order_id: int, payload: Payload, actor: Actor) -> dict:
 
 @router.post("/orders/{order_id}/cancel")
 def cancel_order(order_id: int, actor: Actor) -> dict:
-    """Cancelling a completed ride takes its points back — the ride did not
-    happen, so the points were never earned."""
+    """Cancelling a completed ride takes its credits back — the ride did not
+    happen, so the credits were never earned."""
     with db.session_scope() as session:
         order = session.get(db.Order, order_id)
         if order is None:

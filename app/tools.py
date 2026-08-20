@@ -68,7 +68,7 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_points",
-        "description": ("מצב הניקוד של המתקשר במועדון הנוסעים, וכמה נקודות חסרות לנסיעת חינם."),
+        "description": ("מצב הקרדיטים של המתקשר במועדון הנוסעים, וכמה קרדיטים חסרים לנסיעת חינם."),
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
     },
     {
@@ -189,7 +189,7 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "redeem_order",
-        "description": "מימוש נקודות לתשלום הנסיעה האחרונה שנשמרה בשיחה. לפני זה בדוק get_points.",
+        "description": "מימוש קרדיטים לתשלום הנסיעה האחרונה שנשמרה בשיחה. לפני זה בדוק get_points.",
         "parameters": {"type": "object", "properties": {}},
     },
     {
@@ -509,7 +509,7 @@ class ToolContext:
                 return {"ok": False, "error": result.get("error", "אין אפשרות למימוש")}
         except Exception:
             log.exception("redeem_order failed for %s", order_id)
-            return {"ok": False, "error": "שגיאה במימוש הנקודות"}
+            return {"ok": False, "error": "שגיאה במימוש הקרדיטים"}
 
     def _create_referral(self, args: dict[str, Any]) -> dict[str, Any]:
         invited = db.normalize_phone(args.get("invited_phone") or "")

@@ -843,8 +843,10 @@ def _rating_step(session: Session, params: dict[str, str]) -> dict:
         if score < 1 or score > 5:
             return menu("rating_prompt", keys="1,2,3,4,5")
 
-        state["score"] = str(score)
-        if score < 5:
+        if rating is not None:
+            state["rating"] = str(rating.id)
+            state["score"] = str(score)
+        if score < 4:
             _save(row, "record_feedback", state)
             return record(
                 "feedback",
@@ -854,7 +856,8 @@ def _rating_step(session: Session, params: dict[str, str]) -> dict:
                 text="אם תוכל לשתף יותר פרטים, נא הקלט כעת",
             )
 
-        ratings.record_score(session, rating, score)
+        if rating is not None:
+            ratings.record_score(session, rating, score)
         _save(row, "done", state)
         return message("rating_thanks")
 

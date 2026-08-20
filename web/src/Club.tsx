@@ -34,7 +34,7 @@ function Member({ phone, onClose }: { phone: string; onClose: () => void }) {
     <div className="panel">
       <div className="row">
         <h2>
-          {data.name ?? data.phone} · {data.balance} נקודות
+          {data.name ?? data.phone} · {data.balance} קרדיטים
         </h2>
         <button onClick={onClose}>סגור</button>
       </div>
@@ -42,7 +42,7 @@ function Member({ phone, onClose }: { phone: string; onClose: () => void }) {
 
       <div className="row">
         <input
-          placeholder="שינוי נקודות (+/-)"
+          placeholder="שינוי קרדיטים (+/-)"
           value={delta}
           onChange={(e) => setDelta(e.target.value)}
         />

@@ -20,7 +20,7 @@ from app import db
 ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
 #: The dispatcher moves an order along this line; `done` is what earns loyalty
-#: points and what the accounting side counts, so nothing else may imply it.
+#: credits and what the accounting side counts, so nothing else may imply it.
 ORDER_STATUSES = ("new", "assigned", "on_route", "done", "cancelled")
 
 

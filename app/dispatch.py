@@ -361,7 +361,7 @@ def cancel(session: Session, tender: db.Tender, *, actor: str = "dispatcher") ->
 
 def finish_ride(session: Session, order: db.Order, *, area: str | None = None) -> dict:
     """The driver's 'ride finished': completes the order, which is what makes
-    the points real, refreshes their location for free, and queues the rating
+    the credits real, refreshes their location for free, and queues the rating
     call."""
     order.status = "done"
     order.finished_at = datetime.utcnow()

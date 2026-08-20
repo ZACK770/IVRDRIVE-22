@@ -1,4 +1,4 @@
-"""The passenger club: points earned, points spent, and the rules that keep
+"""The passenger club: credits earned, credits spent, and the rules that keep
 both honest.
 
 Two invariants drive the whole module. Points are only ever earned by a ride
@@ -23,7 +23,7 @@ from app import db
 
 log = logging.getLogger("loyalty")
 
-#: A ride earns points once, under this reason; the welcome gift and the
+#: A ride earns credits once, under this reason; the welcome gift and the
 #: referral bonus are separate reasons so a phone can hold all three.
 REASON_RIDE = "ride"
 REASON_GIFT = "first_ride_gift"
@@ -88,7 +88,7 @@ def _add(
     session.flush()
     db.log_action(
         session,
-        "points",
+        "credits",
         actor=actor,
         entity="phone",
         entity_id=entry.phone,
@@ -123,7 +123,7 @@ def grant(
 
 
 def points_for_order(order: db.Order) -> int:
-    """A ride bought with points earns none — otherwise a free ride would
+    """A ride bought with credits earns none — otherwise a free ride would
     partly pay for the next one."""
     if order.points_spent:
         return 0
@@ -134,7 +134,7 @@ def points_for_order(order: db.Order) -> int:
 
 
 def award_for_order(session: Session, order: db.Order, *, actor: str = "system") -> dict:
-    """Called when an order reaches ``done``. Grants the ride points, the
+    """Called when an order reaches ``done``. Grants the ride credits, the
     one-per-phone welcome gift, and any referral bonus the ride triggers."""
     if order.status != "done":
         return {"awarded": 0, "reason": "order not done"}
@@ -186,7 +186,7 @@ def award_for_order(session: Session, order: db.Order, *, actor: str = "system")
 
 
 def reverse_for_order(session: Session, order: db.Order, *, actor: str = "system") -> int:
-    """An order that was marked done and then cancelled gives the points back.
+    """An order that was marked done and then cancelled gives the credits back.
     Redemptions are refunded too — the passenger never got the ride."""
     reversed_total = 0
     entries = session.scalars(
@@ -224,14 +224,14 @@ def can_redeem(session: Session, phone: str) -> bool:
 def redeem_ride(
     session: Session, order: db.Order, *, actor: str = "system"
 ) -> dict:
-    """Spend the points that buy a free ride. Fails loudly rather than letting
-    a balance go negative: the caller is told there are not enough points."""
+    """Spend the credits that buy a free ride. Fails loudly rather than letting
+    a balance go negative: the caller is told there are not enough credits."""
     cost = db.setting_int("redeem_points")
     if order.points_spent:
-        return {"redeemed": False, "error": "כבר מומשו נקודות בהזמנה זו"}
+        return {"redeemed": False, "error": "כבר מומשו קרדיטים בהזמנה זו"}
     current = balance(session, order.phone)
     if current < cost:
-        return {"redeemed": False, "error": "אין מספיק נקודות", "balance": current}
+        return {"redeemed": False, "error": "אין מספיק קרדיטים", "balance": current}
     _add(
         session,
         phone=order.phone,
