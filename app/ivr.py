@@ -735,7 +735,8 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
     if row.step == "menu":
         if dtmf == "1":
             _save(row, "done", state)
-            return message("passenger_balance")
+            balance = loyalty.balance(session, caller)
+            return say(tts.AUDIO_TEXTS["passenger_balance"].format(balance=balance))
         if dtmf == "2":
             order = session.scalars(
                 select(db.Order)
