@@ -82,11 +82,19 @@ export interface Summary {
   by_status: Record<OrderStatus, number>;
 }
 
-export interface Price {
-  id: number;
-  origin: string;
-  destination: string;
-  price: number;
+export interface BotConfig {
+  name?: string;
+  identity?: string;
+  iron_rules?: string;
+  guidelines?: string;
+  opening_sentence?: string;
+  knowledge?: string;
+  language?: string;
+  voice?: string;
+  representative_phone?: string;
+  allowed_actions?: string[];
+  questionnaire?: { id?: string; question?: string; instructions?: string }[];
+  q_and_a?: { question?: string; answer?: string; action?: string }[];
 }
 
 export interface Customer {
@@ -404,11 +412,11 @@ export const api = {
     }),
   calls: () => request<{ calls: Call[] }>("/api/calls").then((r) => r.calls),
   call: (id: number) => request<CallDetail>(`/api/calls/${id}`),
-  prices: () => request<{ prices: Price[] }>("/api/prices").then((r) => r.prices),
-  savePrice: (price: { id?: number; origin: string; destination: string; price: number }) =>
-    write<{ id: number }>("/api/prices", price).then((r) => r.id),
-  deletePrice: (id: number) =>
-    request<{ ok: boolean }>(`/api/prices/${id}`, { method: "DELETE" }).then((r) => r.ok),
+  botconfig: () => request<{ config: BotConfig }>("/api/botconfig").then((r) => r.config),
+  saveBotconfig: (config: BotConfig) =>
+    write<{ config: BotConfig }>("/api/botconfig", { config }, "PUT").then((r) => r.config),
+  resetBotconfig: () =>
+    request<{ config: BotConfig }>("/api/botconfig/reset", { method: "POST" }).then((r) => r.config),
   customers: () =>
     request<{ customers: Customer[] }>("/api/customers").then((r) => r.customers),
   prompt: () =>

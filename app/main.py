@@ -18,6 +18,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -37,9 +38,7 @@ from app import (
     scheduler,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("probe")
 
 
@@ -63,9 +62,7 @@ app.include_router(console_proxy.router)
 #: The console runs as a separate Render service on its own domain, so the API
 #: has to name it explicitly. Comma-separated; `*` for local development.
 CORS_ORIGINS = [
-    origin.strip()
-    for origin in os.getenv("CONSOLE_ORIGINS", "*").split(",")
-    if origin.strip()
+    origin.strip() for origin in os.getenv("CONSOLE_ORIGINS", "*").split(",") if origin.strip()
 ]
 app.add_middleware(
     CORSMiddleware,
@@ -108,9 +105,7 @@ def _handshake_info(ws: WebSocket) -> dict:
         "subprotocols": ws.scope.get("subprotocols", []),
         "headers": {k: _redact(k, v) for k, v in headers.items()},
         "bearer_present": auth.lower().startswith("bearer "),
-        "bearer_matches_expected": bool(
-            EXPECTED_BEARER and auth[7:].strip() == EXPECTED_BEARER
-        ),
+        "bearer_matches_expected": bool(EXPECTED_BEARER and auth[7:].strip() == EXPECTED_BEARER),
     }
 
 
@@ -139,12 +134,8 @@ async def _echo_loopback(ws: WebSocket, cap: capture.CallCapture, kind: str, pay
 async def _tone_loop(ws: WebSocket, cap: capture.CallCapture) -> None:
     encoders = {
         "mulaw": lambda s: codecs.pcm16_to_ulaw(s),
-        "pcm16le": lambda s: b"".join(
-            int(v).to_bytes(2, "little", signed=True) for v in s
-        ),
-        "pcm16be": lambda s: b"".join(
-            int(v).to_bytes(2, "big", signed=True) for v in s
-        ),
+        "pcm16le": lambda s: b"".join(int(v).to_bytes(2, "little", signed=True) for v in s),
+        "pcm16be": lambda s: b"".join(int(v).to_bytes(2, "big", signed=True) for v in s),
     }
     encode = encoders.get(TONE_CODEC, encoders["mulaw"])
     samples = codecs.tone(440, 400)
@@ -200,9 +191,7 @@ async def _handle(ws: WebSocket) -> None:
         ai_task = asyncio.create_task(call.run())
 
     tone_task = (
-        asyncio.create_task(_tone_loop(ws, cap))
-        if ECHO_MODE == "tone" and not ai_mode
-        else None
+        asyncio.create_task(_tone_loop(ws, cap)) if ECHO_MODE == "tone" and not ai_mode else None
     )
     echo_tasks: set[asyncio.Task] = set()
     reason = "unknown"
@@ -269,6 +258,21 @@ async def healthz() -> dict:
         "pbx_dry_run": pbx.DRY_RUN,
         "scheduler": scheduler.ENABLED,
     }
+
+
+@app.get("/outbound-ip")
+async def outbound_ip() -> dict:
+    """Return the public IP the server uses for outbound calls."""
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get("https://api.ipify.org?format=json")
+            resp.raise_for_status()
+            payload = resp.json()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail=f"could not resolve outbound ip: {exc}"
+        ) from exc
+    return {"ip": payload.get("ip"), "source": "api.ipify.org"}
 
 
 @app.api_route("/ws/ivr", methods=["GET", "POST"])

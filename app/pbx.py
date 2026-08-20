@@ -5,7 +5,7 @@ Three surfaces, three trust models, and they are not interchangeable:
 * ``ivrFilesApi.php?action=makeCall`` places the flash call ("צינתוק"): it rings
   the recipient with a caller ID we choose and hangs up the moment they answer.
   No audio, no cost to the driver, and the number stays in their missed calls.
-  Authenticated by IP whitelist only — no apiKey.
+  Requires an apiKey and an IP whitelist entry.
 * ``campaignApi.php`` broadcasts a recorded offer to a list of numbers. apiKey
   *and* IP whitelist. This is the paid path, used for drivers who bought spoken
   offers.
@@ -41,11 +41,9 @@ def _flag(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes"}
 
 
-#: Dialling is opt-in. `makeCall` needs no apiKey — only a whitelisted IP — so
-#: an unconfigured deployment would happily ring real drivers; the client
-#: therefore logs what it would have sent unless the operator says otherwise.
-#: `PBX_LIVE=1` overrides `PBX_DRY_RUN` and enables flash calls on an
-#: IP-whitelisted host with no apiKey. No flag means dry-run.
+#: Dialling is opt-in. `makeCall` and `campaignRun` need a whitelisted source IP.
+#: `PBX_LIVE=1` or `PBX_API_KEY` set disables dry-run; both endpoints also send
+#: the apiKey in the request body.
 DRY_RUN = not (_flag("PBX_LIVE") or bool(os.getenv("PBX_API_KEY")))
 TIMEOUT_S = float(os.getenv("PBX_TIMEOUT_S", "10"))
 #: The PBX's own limit; we stay one second clear of it.
@@ -72,19 +70,26 @@ def _ok(payload: dict) -> bool:
     return False
 
 
-def _request(action: str, params: dict, *, endpoint: str = "ivrFilesApi.php") -> dict:
+def _request(
+    action: str,
+    params: dict,
+    *,
+    endpoint: str = "ivrFilesApi.php",
+    json_body: bool = False,
+) -> dict:
     url = f"{BASE_URL}/{endpoint}"
     body = {"action": action, **{k: v for k, v in params.items() if v is not None}}
-    # makeCall is authenticated by IP alone; sending a key there is at best
-    # noise, and the endpoint is documented as rejecting on IP, not on key.
-    if API_KEY and action != "makeCall":
+    if API_KEY:
         body.setdefault("apiKey", API_KEY)
     if DRY_RUN:
         redacted = {k: ("***" if k == "apiKey" else v) for k, v in body.items()}
         log.info("pbx dry-run %s %s", url, redacted)
         return {"status": "OK", "dry_run": True}
     try:
-        response = httpx.post(url, data=body, timeout=TIMEOUT_S)
+        if json_body:
+            response = httpx.post(url, json=body, timeout=TIMEOUT_S)
+        else:
+            response = httpx.post(url, data=body, timeout=TIMEOUT_S)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:
@@ -180,13 +185,15 @@ def voice_broadcast(
         return {"started": False, "note": "אין נמענים"}
     params: dict[str, object] = {
         "campaignName": name,
-        "phones": ",".join(db.normalize_phone(p) for p in phones),
+        "phones": [db.normalize_phone(p) for p in phones],
         "messagesType": "apiUrl",
         "callLength": 25,
+        "dialRetries": 1,
+        "betweenRetries": 20,
     }
     if module_url:
         params["apiUrl"] = module_url
-    payload = _request("campaignRun", params, endpoint="campaignApi.php")
+    payload = _request("campaignRun", params, endpoint="campaignApi.php", json_body=True)
     return {"started": True, "campaign_id": payload.get("campaignId"), "response": payload}
 
 

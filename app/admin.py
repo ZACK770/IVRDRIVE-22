@@ -1,4 +1,4 @@
-"""Minimal operator console: edit the prompt, manage prices, export orders.
+"""Minimal operator console: edit the bot prompt and export orders.
 
 Deliberately server-rendered HTML with no build step — the dispatcher needs to
 change the bot's wording without a deploy, nothing more.
@@ -52,7 +52,7 @@ _PAGE = """<!doctype html>
  td,th{{border:1px solid #ddd;padding:.4rem .6rem;text-align:right}}
  nav a{{margin-left:1rem}} button{{padding:.4rem 1rem;font-size:1rem}}
 </style></head><body>
-<nav><a href="/admin">פרומפט</a><a href="/admin/prices">מחירים</a>
+<nav><a href="/admin">פרומפט</a>
 <a href="/admin/customers">לקוחות</a><a href="/admin/orders">הזמנות</a>
 <a href="/admin/calls">שיחות</a><a href="/">דיבאג</a></nav>
 <h1>{title}</h1>
@@ -80,52 +80,6 @@ def prompt_form() -> HTMLResponse:
 def prompt_save(content: str = Form(...)) -> RedirectResponse:
     db.set_prompt("system", content)
     return RedirectResponse("/admin", status_code=303)
-
-
-@router.get("/prices", response_class=HTMLResponse)
-def prices_page() -> HTMLResponse:
-    with db.session_scope() as session:
-        rows = session.scalars(select(db.Price).order_by(db.Price.origin)).all()
-        listed = "".join(
-            f"<tr><td>{escape(r.origin)}</td><td>{escape(r.destination)}</td>"
-            f"<td>{r.price:.0f} ₪</td>"
-            f'<td><form method="post" action="/admin/prices/{r.id}/delete">'
-            f'<button type="submit">מחק</button></form></td></tr>'
-            for r in rows
-        )
-    return _page(
-        "מחירון",
-        f"""<table><tr><th>מוצא</th><th>יעד</th><th>מחיר</th><th></th></tr>
-        {listed}</table>
-        <form method="post" action="/admin/prices">
-        <input name="origin" placeholder="מוצא" required>
-        <input name="destination" placeholder="יעד" required>
-        <input name="price" type="number" step="1" placeholder="מחיר" required>
-        <button type="submit">הוסף</button></form>""",
-    )
-
-
-@router.post("/prices")
-def prices_add(
-    origin: str = Form(...), destination: str = Form(...), price: float = Form(...)
-) -> RedirectResponse:
-    with db.session_scope() as session:
-        session.add(
-            db.Price(
-                origin=db.normalize_place(origin),
-                destination=db.normalize_place(destination),
-                price=price,
-            )
-        )
-    return RedirectResponse("/admin/prices", status_code=303)
-
-
-@router.post("/prices/{price_id}/delete")
-def prices_delete(price_id: int) -> RedirectResponse:
-    with db.session_scope() as session:
-        if (row := session.get(db.Price, price_id)) is not None:
-            session.delete(row)
-    return RedirectResponse("/admin/prices", status_code=303)
 
 
 @router.get("/customers", response_class=HTMLResponse)

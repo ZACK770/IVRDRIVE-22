@@ -15,6 +15,7 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     DateTime,
     Float,
@@ -22,7 +23,6 @@ from sqlalchemy import (
     String,
     Text,
     create_engine,
-    func,
     inspect,
     select,
 )
@@ -71,14 +71,22 @@ class Customer(Base):
     club_joined_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
-class Price(Base):
-    __tablename__ = "prices"
+class BotConfig(Base):
+    """Structured bot persona / prompt source.
+
+    The runtime prompt is generated from this row on every call, so operators
+    control identity, rules, knowledge (including prices), and allowed actions
+    from one place in the console.
+    """
+
+    __tablename__ = "bot_config"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    origin: Mapped[str] = mapped_column(String(120), index=True)
-    destination: Mapped[str] = mapped_column(String(120), index=True)
-    price: Mapped[float] = mapped_column(Float)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    name: Mapped[str] = mapped_column(String(32), unique=True, index=True, default="system")
+    config: Mapped[dict] = mapped_column(JSON, default=dict)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
 
 
 class Order(Base):
@@ -401,64 +409,184 @@ def recent_call(session: Session, phone: str, minutes: int) -> CallLog | None:
     return session.scalars(stmt).first()
 
 
-def _place_match(session: Session, first: str, second: str) -> Price | None:
-    """Try exact, then contained (for 'ירושלים' inside 'רחוב יפו 10 ירושלים')."""
-    for first_col, second_col in (
-        (Price.origin, Price.destination),
-        (Price.destination, Price.origin),
-    ):
-        exact = session.scalars(
-            select(Price).where(
-                func.lower(first_col) == first,
-                func.lower(second_col) == second,
-            )
-        ).first()
-        if exact is not None:
-            return exact
-    # Containment match: pick the longest stored origin to avoid short substrings.
-    hits: list[Price] = []
-    for row in session.scalars(select(Price)).all():
-        ro, rd = row.origin or "", row.destination or ""
-        lo, ld = ro.lower(), rd.lower()
-        if (first in lo or lo in first) and (second in ld or ld in second):
-            hits.append(row)
-        elif (first in ld or ld in first) and (second in lo or lo in second):
-            hits.append(row)
-    return max(hits, key=lambda r: len(r.origin or "") + len(r.destination or "")) if hits else None
+def botconfig_to_prompt(config: dict) -> str:
+    """Render the structured bot configuration into the runtime system prompt."""
+    identity = config.get("identity", prompt.IDENTITY)
+    iron = config.get("iron_rules", "")
+    guidelines = config.get("guidelines", "")
+    opening = config.get("opening_sentence", prompt.GREETING)
+    knowledge = config.get("knowledge", "")
+    language = config.get("language", "עברית")
+    voice = config.get("voice", "Charon")
+    rep_phone = config.get("representative_phone") or get_setting("representative_extension")
+    allowed = config.get("allowed_actions", [])
+    questionnaire = config.get("questionnaire", [])
+    q_and_a = config.get("q_and_a", [])
+
+    parts = [
+        identity,
+        "",
+        "חוקי ברזל (אסור לעבור עליהם):",
+        iron,
+        "",
+        "קווים מנחים:",
+        guidelines,
+        "",
+        "מידע / ידע לנציג (מקור האמת, במיוחד מחירים):",
+        knowledge,
+        "",
+        f"שפת השיח: {language}",
+        f"קול: {voice}",
+        "",
+        f"משפט פתיחה: {opening}",
+    ]
+
+    if rep_phone:
+        parts.extend(
+            [
+                "",
+                f"מספר נציג אנושי: {rep_phone}",
+                "כאשר לקוח מבקש נציג במפורש אחרי שניסית לעזור, "
+                "השתמש בכלי transfer_to_representative ואז שתוק.",
+            ]
+        )
+
+    if allowed:
+        parts.extend(["", "פעולות מותרות: " + ", ".join(str(a) for a in allowed)])
+
+    if questionnaire:
+        parts.append("")
+        parts.append("שאלון:")
+        for q in questionnaire:
+            parts.append(f"- {q.get('question', '')}")
+            if q.get("instructions"):
+                parts.append(f"  ({q['instructions']})")
+
+    if q_and_a:
+        parts.append("")
+        parts.append("שאלות נפוצות:")
+        for item in q_and_a:
+            parts.append(f"Q: {item.get('question', '')}")
+            parts.append(f"A: {item.get('answer', '')}")
+
+    parts.extend(
+        [
+            "",
+            "סיום: אחרי שהלקוח אישר את הפרטים קרא ל-save_order "
+            "כדי לשמור ולפתוח מכרז, אמור משפט סיכום אחד קצר, "
+            "ומיד קרא ל-hangup_call כדי לנתק.",
+        ]
+    )
+
+    return "\n".join(parts)
 
 
-def find_price(session: Session, origin: str, destination: str) -> Price | None:
-    """Exact match on normalised names, then reverse direction, then loose match."""
-    a, b = normalize_place(origin), normalize_place(destination)
-    if a and b:
-        hit = _place_match(session, a, b)
-        if hit is not None:
-            return hit
-    for first, second in ((a, b), (b, a)):
-        if not first or not second:
-            continue
-        for row in session.scalars(select(Price)).all():
-            lo, ld = (row.origin or "").lower(), (row.destination or "").lower()
-            if (first in lo or lo in first) and (second in ld or ld in second):
-                return row
-            if (first in ld or ld in first) and (second in lo or lo in second):
-                return row
-    return None
+DEFAULT_BOTCONFIG: dict = {
+    "name": "מוקד דרייברים",
+    "identity": (
+        "אתה נציג שירות של מוקד הדרייברים החרדי. תפקידך לברר מאיפה לאיפה הנסיעה, "
+        "להציג מחיר לאישור הלקוח, לברר אם להזמין עכשיו או לאיזה שעה, ולעדכן שההזמנה "
+        "נשמרת ונהג ייצור קשר עם הנוסע ישירות."
+    ),
+    "iron_rules": (
+        "תתמקד בנושא המוקד דרייברים בלבד.\n"
+        "אתה מציג מחירים ממאגר הידע לנציג בלבד ובשקלים בלבד.\n"
+        "אם יש בקשות חריגות: מעל 4 נוסעים, או רכב מסוג ספציפי דווקא - אמור שאתה מעביר "
+        "את הבקשה אבל שייוודא את זה גם מול הנהג.\n"
+        "כל תשובה היא משפט אחד קצר, עד כ-12 מילים, ובו שאלה אחת בלבד.\n"
+        "אל תפתח בהקדמה, אל תסביר מה אתה יכול או לא יכול לעשות, ואל תחזור על כל הפרטים שנאספו.\n"
+        "אל תמציא שום פרט: לא מחיר, לא זמן הגעה ולא זמינות נהג."
+    ),
+    "guidelines": (
+        "היה אנושי וענייני, אדיב יעיל ומהיר. ניסוח קצר ומתומצת. "
+        "טון מאופק וחמים, משפטים בני שתיים שלוש מילים."
+    ),
+    "opening_sentence": "שלום, הגעת למוקד הדרייברים החרדי. איך אפשר לעזור?",
+    "knowledge": (
+        "מחירי נסיעות:\n"
+        "מבני ברק לירושלים ולהיפך - 180 ש''ח\n"
+        "מבני ברק לצפת - 250 ש''ח\n"
+        "מירושלים לצפת - 350 ש''ח\n"
+        "מחיפה לבאר שבע - 600 ש''ח"
+    ),
+    "language": "עברית",
+    "voice": "Charon",
+    "representative_phone": "0527180504",
+    "allowed_actions": [
+        "hangup_call",
+        "transfer_to_representative",
+        "save_order",
+        "get_recent_call",
+    ],
+    "questionnaire": [
+        {
+            "id": "origin_destination",
+            "question": "מאיפה לאיפה אתה צריך?",
+            "instructions": (
+                "חובה לקבל שם תקין של עיר מוצא ועיר יעד. "
+                "אם הנסיעה פנימית באותה עיר - סרב לקבל אותה."
+            ),
+        },
+        {
+            "id": "passengers",
+            "question": "כמה נוסעים?",
+            "instructions": (
+                "חובה לקבל מספר. אם מספר נוסעים גבוה מ-4, "
+                "ודא פעם אחת וציין שהבקשה תועבר לנהג."
+            ),
+        },
+        {
+            "id": "pickup_time",
+            "question": "מתי תרצו לנסוע?",
+            "instructions": "עכשיו או שעה ספציפית.",
+        },
+        {
+            "id": "price_confirm",
+            "question": "המחיר הוא {{מחיר}}. האם מקובל עליך?",
+            "instructions": "את המחיר אתה לוקח ממאגר הידע לנציג.",
+        },
+    ],
+    "q_and_a": [],
+}
+
+
+def get_botconfig(name: str = "system") -> dict:
+    with session_scope() as session:
+        row = session.scalars(select(BotConfig).where(BotConfig.name == name)).first()
+        if row is not None and row.config:
+            return dict(row.config)
+    return dict(DEFAULT_BOTCONFIG)
+
+
+def set_botconfig(name: str, config: dict) -> None:
+    generated = botconfig_to_prompt(config)
+    with session_scope() as session:
+        row = session.scalars(select(BotConfig).where(BotConfig.name == name)).first()
+        if row is None:
+            session.add(BotConfig(name=name, config=config))
+        else:
+            row.config = config
+        prompt_row = session.scalars(select(Prompt).where(Prompt.name == name)).first()
+        if prompt_row is None:
+            session.add(Prompt(name=name, content=generated))
+        else:
+            prompt_row.content = generated
 
 
 def prompt_is_edited(row: Prompt | None) -> bool:
     """The operator has typed their own prompt; do not overwrite it on deploy."""
     if row is None:
         return False
-    if row.content == prompt.SYSTEM_PROMPT:
+    generated = botconfig_to_prompt(get_botconfig())
+    if row.content == generated:
         return False
-    return row.content not in prompt.LEGACY_PROMPTS
+    return row.content not in prompt.LEGACY_PROMPTS and row.content != prompt.SYSTEM_PROMPT
 
 
 def get_prompt(name: str = "system") -> str:
     with session_scope() as session:
         row = session.scalars(select(Prompt).where(Prompt.name == name)).first()
-        return row.content if row else prompt.SYSTEM_PROMPT
+        return row.content if row else botconfig_to_prompt(get_botconfig())
 
 
 def set_prompt(name: str, content: str) -> None:
@@ -547,7 +675,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
 def get_setting(key: str, default: str | None = None) -> str:
     with session_scope() as session:
         row = session.scalars(select(Setting).where(Setting.key == key)).first()
-        if row is not None:
+        if row is not None and row.value:
             return row.value
     return DEFAULT_SETTINGS.get(key, default if default is not None else "")
 
@@ -614,8 +742,11 @@ def init_db() -> None:
     _add_missing_columns()
     ensure_default_settings()
     with session_scope() as session:
-        row = session.scalars(select(Prompt).where(Prompt.name == "system")).first()
-        if row is None:
-            session.add(Prompt(name="system", content=prompt.SYSTEM_PROMPT))
-        elif not prompt_is_edited(row):
-            row.content = prompt.SYSTEM_PROMPT
+        botconfig_row = session.scalars(select(BotConfig).where(BotConfig.name == "system")).first()
+        if botconfig_row is None:
+            session.add(BotConfig(name="system", config=DEFAULT_BOTCONFIG))
+        prompt_row = session.scalars(select(Prompt).where(Prompt.name == "system")).first()
+        if prompt_row is None:
+            session.add(Prompt(name="system", content=botconfig_to_prompt(DEFAULT_BOTCONFIG)))
+        elif not prompt_is_edited(prompt_row):
+            prompt_row.content = botconfig_to_prompt(get_botconfig())

@@ -41,22 +41,8 @@ DECLARATIONS: list[dict[str, Any]] = [
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
     },
     {
-        "name": "lookup_price",
-        "description": "מחיר נסיעה לפי מסלול. המקור היחיד למחירים — אין להמציא מחיר.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "origin": {"type": "string", "description": "כתובת או עיר מוצא"},
-                "destination": {"type": "string", "description": "כתובת או עיר יעד"},
-            },
-            "required": ["origin", "destination"],
-        },
-    },
-    {
         "name": "get_points",
-        "description": (
-            "מצב הניקוד של המתקשר במועדון הנוסעים, וכמה נקודות חסרות לנסיעת חינם."
-        ),
+        "description": ("מצב הניקוד של המתקשר במועדון הנוסעים, וכמה נקודות חסרות לנסיעת חינם."),
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
     },
     {
@@ -184,7 +170,6 @@ class ToolContext:
         handlers = {
             "get_customer": self._get_customer,
             "get_recent_call": self._get_recent_call,
-            "lookup_price": self._lookup_price,
             "get_points": self._get_points,
             "save_order": self._save_order,
             "hangup_call": self._hangup_call,
@@ -212,9 +197,7 @@ class ToolContext:
     def _get_customer(self, args: dict[str, Any]) -> dict[str, Any]:
         phone = db.normalize_phone(args.get("phone") or self.caller)
         with db.session_scope() as session:
-            row = session.scalars(
-                select(db.Customer).where(db.Customer.phone == phone)
-            ).first()
+            row = session.scalars(select(db.Customer).where(db.Customer.phone == phone)).first()
             if row is None:
                 return {"found": False, "phone": phone}
             return {
@@ -239,9 +222,7 @@ class ToolContext:
             ).first()
             return {
                 "found": True,
-                "minutes_ago": round(
-                    (datetime.utcnow() - row.started_at).total_seconds() / 60, 1
-                ),
+                "minutes_ago": round((datetime.utcnow() - row.started_at).total_seconds() / 60, 1),
                 "summary": row.summary,
                 "transcript_tail": (row.transcript or "")[-1500:],
                 "last_order": (
@@ -257,26 +238,6 @@ class ToolContext:
                     }
                     if last_order
                     else None
-                ),
-            }
-
-    def _lookup_price(self, args: dict[str, Any]) -> dict[str, Any]:
-        origin, destination = args.get("origin", ""), args.get("destination", "")
-        with db.session_scope() as session:
-            hit = db.find_price(session, origin, destination)
-            if hit is None:
-                return {
-                    "found": False,
-                    "message": "אין מחיר במערכת למסלול הזה; נציג יחזור עם הצעת מחיר.",
-                }
-            return {
-                "found": True,
-                "price": hit.price,
-                "currency": "ILS",
-                "origin": hit.origin,
-                "destination": hit.destination,
-                "lookup_message": (
-                    f"המחיר למסלול מ{hit.origin} ל{hit.destination} הוא {hit.price} שקלים."
                 ),
             }
 
@@ -353,7 +314,9 @@ class ToolContext:
         return {"hung_up": True}
 
     def _transfer_to_representative(self, _args: dict[str, Any]) -> dict[str, Any]:
-        ext = db.get_setting("representative_extension")
+        ext = db.get_botconfig().get("representative_phone") or db.get_setting(
+            "representative_extension"
+        )
         if not ext:
             return {
                 "ok": False,

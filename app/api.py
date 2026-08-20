@@ -173,60 +173,24 @@ def call_detail(call_pk: int) -> dict:
         }
 
 
-@router.get("/prices")
-def list_prices() -> dict:
-    with db.session_scope() as session:
-        rows = session.scalars(select(db.Price).order_by(db.Price.origin)).all()
-        return {
-            "prices": [
-                {
-                    "id": r.id,
-                    "origin": r.origin,
-                    "destination": r.destination,
-                    "price": r.price,
-                }
-                for r in rows
-            ]
-        }
+@router.get("/botconfig")
+def get_botconfig() -> dict:
+    return {"config": db.get_botconfig("system")}
 
 
-@router.post("/prices")
-def create_price(payload: Annotated[dict, Body()]) -> dict:
-    origin = db.normalize_place(str(payload.get("origin") or ""))
-    destination = db.normalize_place(str(payload.get("destination") or ""))
-    if not origin or not destination:
-        raise HTTPException(status_code=422, detail="origin and destination required")
-    try:
-        price = float(payload.get("price"))
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=422, detail="price must be a number") from exc
-    with db.session_scope() as session:
-        row = session.scalars(
-            select(db.Price).where(db.Price.origin == origin, db.Price.destination == destination)
-        ).first()
-        if row is None:
-            row = db.Price(origin=origin, destination=destination, price=price)
-            session.add(row)
-        else:
-            row.price = price
-            row.updated_at = datetime.utcnow()
-        session.flush()
-        return {
-            "id": row.id,
-            "origin": row.origin,
-            "destination": row.destination,
-            "price": row.price,
-        }
+@router.put("/botconfig")
+def set_botconfig(payload: Annotated[dict, Body()]) -> dict:
+    config = payload.get("config") or {}
+    if not isinstance(config, dict):
+        raise HTTPException(status_code=422, detail="config must be an object")
+    db.set_botconfig("system", config)
+    return {"config": db.get_botconfig("system")}
 
 
-@router.delete("/prices/{price_id}")
-def delete_price(price_id: int) -> dict:
-    with db.session_scope() as session:
-        row = session.get(db.Price, price_id)
-        if row is None:
-            raise HTTPException(status_code=404, detail="no such price")
-        session.delete(row)
-        return {"ok": True}
+@router.post("/botconfig/reset")
+def reset_botconfig() -> dict:
+    db.set_botconfig("system", db.DEFAULT_BOTCONFIG)
+    return {"config": db.get_botconfig("system")}
 
 
 @router.get("/customers")

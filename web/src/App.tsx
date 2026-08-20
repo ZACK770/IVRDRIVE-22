@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { Accounting } from "./Accounting";
+import { BotConfig } from "./BotConfig";
 import { Club } from "./Club";
 import { AreaBoard, Tenders } from "./Dispatch";
 import { Drivers } from "./Drivers";
@@ -14,7 +15,6 @@ import {
   type Customer,
   type Order,
   type OrderStatus,
-  type Price,
   type Summary,
 } from "./api";
 import "./styles.css";
@@ -27,9 +27,8 @@ const TABS = {
   club: "מועדון נוסעים",
   accounting: "הנהלת חשבונות",
   calls: "שיחות",
-  prices: "מחירון",
+  botconfig: "עריכת בוט",
   customers: "לקוחות",
-  prompt: "פרומפט",
   settings: "הגדרות",
 } as const;
 
@@ -388,104 +387,6 @@ function Calls() {
   );
 }
 
-function Prices() {
-  const load = useCallback(() => api.prices(), []);
-  const { data, error, refresh } = usePoll<Price[]>(load, 60);
-  const [form, setForm] = useState({ origin: "", destination: "", price: "" });
-  const [note, setNote] = useState("");
-
-  const submit = () => {
-    if (!form.origin.trim() || !form.destination.trim() || !form.price) {
-      setNote("מוצא, יעד ומחיר חובה");
-      return;
-    }
-    api
-      .savePrice({
-        origin: form.origin,
-        destination: form.destination,
-        price: Number(form.price),
-      })
-      .then(() => {
-        setForm({ origin: "", destination: "", price: "" });
-        setNote("נשמר");
-        refresh();
-      })
-      .catch((err: Error) => setNote(err.message));
-  };
-
-  const remove = (id: number) => {
-    api
-      .deletePrice(id)
-      .then((ok) => {
-        if (ok) {
-          setNote("נמחק");
-          refresh();
-        }
-      })
-      .catch((err: Error) => setNote(err.message));
-  };
-
-  return (
-    <>
-      <h1>מחירון</h1>
-      {error && <div className="error">{error}</div>}
-      {note && <div className="muted">{note}</div>}
-      <div className="panel">
-        <h2>הוספת מחיר</h2>
-        <div className="grid">
-          <label>
-            מוצא
-            <input
-              value={form.origin}
-              onChange={(e) => setForm({ ...form, origin: e.target.value })}
-            />
-          </label>
-          <label>
-            יעד
-            <input
-              value={form.destination}
-              onChange={(e) => setForm({ ...form, destination: e.target.value })}
-            />
-          </label>
-          <label>
-            מחיר
-            <input
-              type="number"
-              value={form.price}
-              onChange={(e) => setForm({ ...form, price: e.target.value })}
-            />
-          </label>
-        </div>
-        <button className="action" onClick={submit}>
-          שמור
-        </button>
-      </div>
-      <table>
-        <thead>
-          <tr>
-            <th>מוצא</th>
-            <th>יעד</th>
-            <th>מחיר</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {(data ?? []).map((price) => (
-            <tr key={price.id}>
-              <td>{price.origin}</td>
-              <td>{price.destination}</td>
-              <td>{price.price.toFixed(0)} ₪</td>
-              <td>
-                <button onClick={() => remove(price.id)}>מחק</button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  );
-}
-
 function Customers() {
   const load = useCallback(() => api.customers(), []);
   const { data, error } = usePoll<Customer[]>(load, 60);
@@ -517,62 +418,6 @@ function Customers() {
   );
 }
 
-function PromptEditor() {
-  const [prompt, setPrompt] = useState({ content: "", edited: false, default: "" });
-  const [note, setNote] = useState("");
-
-  useEffect(() => {
-    api
-      .prompt()
-      .then(setPrompt)
-      .catch((err: Error) => setNote(err.message));
-  }, []);
-
-  return (
-    <>
-      <h1>פרומפט</h1>
-      {note && <div className="error">{note}</div>}
-      {prompt.edited && (
-        <div className="muted">הפרומפט נערך ידנית. לחץ "שחזר ברירת מחדל" כדי לטעון את הקובץ.</div>
-      )}
-      <textarea
-        value={prompt.content}
-        onChange={(e) => setPrompt({ ...prompt, content: e.target.value })}
-      />
-      <div className="row" style={{ marginTop: "0.75rem" }}>
-        <button
-          className="action"
-          onClick={() =>
-            api
-              .savePrompt(prompt.content)
-              .then((saved) => {
-                setPrompt(saved);
-                setNote("נשמר. נכנס לתוקף בשיחה הבאה.");
-              })
-              .catch((err: Error) => setNote(err.message))
-          }
-        >
-          שמור
-        </button>
-        <button
-          onClick={() =>
-            api
-              .resetPrompt()
-              .then((saved) => {
-                setPrompt(saved);
-                setNote("הוחזר לברירת המחדל מהקובץ.");
-              })
-              .catch((err: Error) => setNote(err.message))
-          }
-        >
-          שחזר ברירת מחדל
-        </button>
-        <span className="muted">{note}</span>
-      </div>
-    </>
-  );
-}
-
 const VIEWS: Record<Tab, () => ReactElement> = {
   board: Board,
   areas: AreaBoard,
@@ -581,9 +426,8 @@ const VIEWS: Record<Tab, () => ReactElement> = {
   club: Club,
   accounting: Accounting,
   calls: Calls,
-  prices: Prices,
+  botconfig: BotConfig,
   customers: Customers,
-  prompt: PromptEditor,
   settings: Settings,
 };
 
