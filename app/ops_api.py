@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated
+from urllib.parse import unquote
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy import select
@@ -26,7 +27,9 @@ router = APIRouter(prefix="/api", tags=["ops"], dependencies=[Depends(require_to
 
 
 def actor_of(x_actor: Annotated[str | None, Header()] = None) -> str:
-    return (x_actor or "console").strip()[:64]
+    """HTTP headers cannot carry Hebrew, so the console percent-encodes a name
+    outside latin-1; anything already plain passes through unchanged."""
+    return unquote((x_actor or "console").strip())[:64]
 
 
 Actor = Annotated[str, Depends(actor_of)]

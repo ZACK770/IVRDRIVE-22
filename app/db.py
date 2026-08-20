@@ -28,6 +28,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
+from app import prompt
+
 
 def _engine_url(raw: str) -> str:
     """Render hands out `postgres://…`, which SQLAlchemy 2 rejects, and we ship
@@ -399,41 +401,64 @@ def recent_call(session: Session, phone: str, minutes: int) -> CallLog | None:
     return session.scalars(stmt).first()
 
 
+def _place_match(session: Session, first: str, second: str) -> Price | None:
+    """Try exact, then contained (for 'ירושלים' inside 'רחוב יפו 10 ירושלים')."""
+    for first_col, second_col in (
+        (Price.origin, Price.destination),
+        (Price.destination, Price.origin),
+    ):
+        exact = session.scalars(
+            select(Price).where(
+                func.lower(first_col) == first,
+                func.lower(second_col) == second,
+            )
+        ).first()
+        if exact is not None:
+            return exact
+    # Containment match: pick the longest stored origin to avoid short substrings.
+    hits: list[Price] = []
+    for row in session.scalars(select(Price)).all():
+        ro, rd = row.origin or "", row.destination or ""
+        lo, ld = ro.lower(), rd.lower()
+        if (first in lo or lo in first) and (second in ld or ld in second):
+            hits.append(row)
+        elif (first in ld or ld in first) and (second in lo or lo in second):
+            hits.append(row)
+    return max(hits, key=lambda r: len(r.origin or "") + len(r.destination or "")) if hits else None
+
+
 def find_price(session: Session, origin: str, destination: str) -> Price | None:
-    """Exact match on normalised names, then the reverse direction."""
+    """Exact match on normalised names, then reverse direction, then loose match."""
     a, b = normalize_place(origin), normalize_place(destination)
-    for first, second in ((a, b), (b, a)):
-        stmt = select(Price).where(
-            func.lower(Price.origin) == first, func.lower(Price.destination) == second
-        )
-        if (hit := session.scalars(stmt).first()) is not None:
+    if a and b:
+        hit = _place_match(session, a, b)
+        if hit is not None:
             return hit
+    for first, second in ((a, b), (b, a)):
+        if not first or not second:
+            continue
+        for row in session.scalars(select(Price)).all():
+            lo, ld = (row.origin or "").lower(), (row.destination or "").lower()
+            if (first in lo or lo in first) and (second in ld or ld in second):
+                return row
+            if (first in ld or ld in first) and (second in lo or lo in second):
+                return row
     return None
 
 
-DEFAULT_PROMPT = (
-    "אתה נציג טלפוני של מוקד ההסעות 'דרייברים'. דבר עברית בלבד.\n"
-    "חוק הברזל: כל תשובה שלך היא משפט אחד קצר, עד כ-12 מילים, ובו שאלה אחת "
-    "בלבד. אל תפתח בהקדמה, אל תסביר מה אתה כן ולא יכול לעשות, ואל תחזור על "
-    "כל הפרטים שנאספו — אישור קצר של הפרט האחרון בלבד. סכם את כל ההזמנה רק "
-    "פעם אחת, לפני האישור הסופי.\n"
-    "אם הלקוח שואל משהו שאינו קשור להסעות, ענה במשפט אחד קצר וחזור מיד "
-    "לשאלה הבאה שחסרה לך.\n"
-    "עליך לאסוף: כתובת מוצא, כתובת יעד, מספר נוסעים, מועד הנסיעה, סוג רכב "
-    "(למשל סיאנה או טסלה), כמות מטען/מזוודות וכל בקשה מיוחדת. שאל עליהם בקצרה.\n"
-    "אל תמציא מחיר לעולם — השתמש בכלי lookup_price. אם אין מחיר במערכת, אמור "
-    "שנציג יחזור עם הצעת מחיר.\n"
-    "אם הלקוח מתקשר שוב זמן קצר אחרי שיחה קודמת, השתמש ב-get_recent_call כדי "
-    "להמשיך מאיפה שהפסקתם במקום להתחיל מחדש.\n"
-    "בסיום, קרא ל-save_order כדי לשמור את ההזמנה, סכם ללקוח בקצרה, ואז קרא "
-    "ל-hangup_call כדי לנתק את השיחה."
-)
+def prompt_is_edited(row: Prompt | None) -> bool:
+    """The operator has typed their own prompt; do not overwrite it on deploy."""
+    if row is None:
+        return False
+    if row.content == prompt.SYSTEM_PROMPT:
+        return False
+    return row.content not in prompt.LEGACY_PROMPTS
 
 
 def get_prompt(name: str = "system") -> str:
     with session_scope() as session:
         row = session.scalars(select(Prompt).where(Prompt.name == name)).first()
-        return row.content if row else DEFAULT_PROMPT
+        return row.content if row else prompt.SYSTEM_PROMPT
 
 
 def set_prompt(name: str, content: str) -> None:
@@ -443,6 +468,25 @@ def set_prompt(name: str, content: str) -> None:
             session.add(Prompt(name=name, content=content))
         else:
             row.content = content
+
+
+def reset_prompt(name: str = "system") -> None:
+    """Discard the DB override and reload the file default."""
+    with session_scope() as session:
+        row = session.scalars(select(Prompt).where(Prompt.name == name)).first()
+        if row is not None:
+            row.content = prompt.SYSTEM_PROMPT
+
+
+def prompt_meta(name: str = "system") -> dict:
+    """Tell the console whether the stored prompt has drifted from the default."""
+    with session_scope() as session:
+        row = session.scalars(select(Prompt).where(Prompt.name == name)).first()
+        return {
+            "content": row.content if row else prompt.SYSTEM_PROMPT,
+            "edited": prompt_is_edited(row),
+            "default": prompt.SYSTEM_PROMPT,
+        }
 
 
 def _add_missing_columns() -> None:
@@ -466,6 +510,7 @@ def _add_missing_columns() -> None:
 
 #: Business rules the operator owns. Stored as strings so one table holds
 #: them all; every reader goes through `setting_int` / `setting_float`.
+#: `representative_extension` is the parallel-channel human target.
 DEFAULT_SETTINGS: dict[str, str] = {
     #: Points per shekel of an order that actually completed.
     "points_per_shekel": "1",
@@ -495,6 +540,7 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "auto_tender": "1",
     #: Stop a paid voice campaign once this many calls have been answered.
     "voice_campaign_stop_answered": "30",
+    "representative_extension": "",
 }
 
 
@@ -568,5 +614,8 @@ def init_db() -> None:
     _add_missing_columns()
     ensure_default_settings()
     with session_scope() as session:
-        if session.scalars(select(Prompt).where(Prompt.name == "system")).first() is None:
-            session.add(Prompt(name="system", content=DEFAULT_PROMPT))
+        row = session.scalars(select(Prompt).where(Prompt.name == "system")).first()
+        if row is None:
+            session.add(Prompt(name="system", content=prompt.SYSTEM_PROMPT))
+        elif not prompt_is_edited(row):
+            row.content = prompt.SYSTEM_PROMPT

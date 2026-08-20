@@ -243,6 +243,35 @@ textarea {
   color: var(--muted);
 }
 
+/* A field that holds a list, so it gets the full row rather than one column. */
+.grid label.wide {
+  grid-column: 1 / -1;
+}
+
+/* One-click area picking next to the free-text field. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.3rem;
+}
+
+button.chip {
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+button.chip.on {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .grid label.check {
   flex-direction: row;
   align-items: center;

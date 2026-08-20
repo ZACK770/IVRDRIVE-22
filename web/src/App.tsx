@@ -518,29 +518,54 @@ function Customers() {
 }
 
 function PromptEditor() {
-  const [content, setContent] = useState("");
+  const [prompt, setPrompt] = useState({ content: "", edited: false, default: "" });
   const [note, setNote] = useState("");
 
   useEffect(() => {
-    api.prompt().then(setContent).catch((err: Error) => setNote(err.message));
+    api
+      .prompt()
+      .then(setPrompt)
+      .catch((err: Error) => setNote(err.message));
   }, []);
 
   return (
     <>
       <h1>פרומפט</h1>
       {note && <div className="error">{note}</div>}
-      <textarea value={content} onChange={(e) => setContent(e.target.value)} />
+      {prompt.edited && (
+        <div className="muted">הפרומפט נערך ידנית. לחץ "שחזר ברירת מחדל" כדי לטעון את הקובץ.</div>
+      )}
+      <textarea
+        value={prompt.content}
+        onChange={(e) => setPrompt({ ...prompt, content: e.target.value })}
+      />
       <div className="row" style={{ marginTop: "0.75rem" }}>
         <button
           className="action"
           onClick={() =>
             api
-              .savePrompt(content)
-              .then(() => setNote("נשמר. נכנס לתוקף בשיחה הבאה."))
+              .savePrompt(prompt.content)
+              .then((saved) => {
+                setPrompt(saved);
+                setNote("נשמר. נכנס לתוקף בשיחה הבאה.");
+              })
               .catch((err: Error) => setNote(err.message))
           }
         >
           שמור
+        </button>
+        <button
+          onClick={() =>
+            api
+              .resetPrompt()
+              .then((saved) => {
+                setPrompt(saved);
+                setNote("הוחזר לברירת המחדל מהקובץ.");
+              })
+              .catch((err: Error) => setNote(err.message))
+          }
+        >
+          שחזר ברירת מחדל
         </button>
         <span className="muted">{note}</span>
       </div>

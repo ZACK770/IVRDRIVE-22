@@ -112,6 +112,14 @@ DECLARATIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "transfer_to_representative",
+        "description": (
+            "העבר את השיחה לנציג אנושי. השתמש בזה רק אם הלקוח מבקש במפורש נציג "
+            "אחרי שניסית לעזור לו, ולא כפתרון ראשון."
+        ),
+        "parameters": {"type": "object", "properties": {}},
+    },
+    {
         "name": "hangup_call",
         "description": "נתק את השיחה לאחר שסיכמת את ההזמנה והלקוח אישר. קרא לזה בסיום.",
         "parameters": {"type": "object", "properties": {}},
@@ -180,6 +188,7 @@ class ToolContext:
             "get_points": self._get_points,
             "save_order": self._save_order,
             "hangup_call": self._hangup_call,
+            "transfer_to_representative": self._transfer_to_representative,
             "redeem_order": self._redeem_order,
             "create_referral": self._create_referral,
         }
@@ -266,6 +275,9 @@ class ToolContext:
                 "currency": "ILS",
                 "origin": hit.origin,
                 "destination": hit.destination,
+                "lookup_message": (
+                    f"המחיר למסלול מ{hit.origin} ל{hit.destination} הוא {hit.price} שקלים."
+                ),
             }
 
     def _get_points(self, args: dict[str, Any]) -> dict[str, Any]:
@@ -339,6 +351,15 @@ class ToolContext:
 
     def _hangup_call(self, _args: dict[str, Any]) -> dict[str, Any]:
         return {"hung_up": True}
+
+    def _transfer_to_representative(self, _args: dict[str, Any]) -> dict[str, Any]:
+        ext = db.get_setting("representative_extension")
+        if not ext:
+            return {
+                "ok": False,
+                "message": "לא מוגדר מספר נציג; נא להגדיר בעמוד ההגדרות.",
+            }
+        return {"ok": True, "transfer_to": ext}
 
     def _redeem_order(self, _args: dict[str, Any]) -> dict[str, Any]:
         order_id = self.saved_order_id

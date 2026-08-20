@@ -39,17 +39,45 @@ def test_an_unknown_driver_is_offered_registration(client):
     assert body["files"][0]["text"] == tts.AUDIO_TEXTS["driver_register"]
 
 
-def test_registration_collects_the_car_year_and_seats(client):
-    call(client, "/ivr/driver", callId="c1", caller=DRIVER)
-    year = call(client, "/ivr/driver", callId="c1", caller=DRIVER, dtmf="1")
-    assert year["type"] == "getDTMF"
-    call(client, "/ivr/driver", callId="c1", caller=DRIVER, dtmf="2021")
-    done = call(client, "/ivr/driver", callId="c1", caller=DRIVER, dtmf="4")
-    assert done["files"][0]["text"] == tts.AUDIO_TEXTS["driver_pending"]
+def step(client: TestClient, **params) -> dict:
+    return call(client, "/ivr/driver", callId="c1", caller=DRIVER, **params)
+
+
+def test_every_registration_question_is_spoken_before_the_digits(client):
+    """getDTMF carries no audio, so a question the caller can hear has to be a
+    module of its own — without it the line is silent but for the beep."""
+    with db.session_scope() as session:
+        session.add(db.Area(name="ירושלים", callback_number="0765673575"))
+
+    step(client)
+    # Each question is one module and the digit capture the next, so the
+    # sequence alternates: ask, capture, answer.
+    assert step(client, dtmf="1")["files"][0]["text"] == tts.AUDIO_TEXTS["driver_ask_car_year"]
+    assert step(client)["type"] == "getDTMF"
+    assert step(client, dtmf="2021")["files"][0]["text"] == tts.AUDIO_TEXTS["driver_ask_seats"]
+    assert step(client)["type"] == "getDTMF"
+    assert step(client, dtmf="4")["files"][0]["text"] == tts.AUDIO_TEXTS["driver_ask_birth_year"]
+    assert step(client)["type"] == "getDTMF"
+
+    area_menu = step(client, dtmf="1980")
+    assert "ירושלים" in area_menu["files"][0]["text"]
+    done = step(client, dtmf="1")
+    assert tts.AUDIO_TEXTS["driver_pending"] in done["files"][0]["text"]
 
     with db.session_scope() as session:
         driver = drivers.get_by_phone(session, DRIVER)
-        assert (driver.car_year, driver.seats, driver.status) == (2021, 4, "pending")
+        assert (driver.car_year, driver.seats, driver.birth_year) == (2021, 4, 1980)
+        assert (driver.home_area, driver.status) == ("ירושלים", "pending")
+        assert drivers.areas_of(session, driver) == ["ירושלים"]
+
+
+def test_a_mis_keyed_answer_is_asked_again(client):
+    step(client)
+    step(client, dtmf="1")  # the car-year question
+    step(client, dtmf="2021")  # the capture module
+    again = step(client, dtmf="1")  # one digit where four are needed
+    assert tts.AUDIO_TEXTS["driver_invalid_input"] in again["files"][0]["text"]
+    assert tts.AUDIO_TEXTS["driver_ask_car_year"] in again["files"][0]["text"]
 
 
 def test_a_second_call_on_a_reused_id_starts_from_the_top(client):
@@ -99,9 +127,37 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         tender = session.scalars(db.select(db.Tender)).first()
         tender.closes_at = tender.opened_at
 
+    won = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
+    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_connecting"]
+
     connected = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
     assert connected["type"] == "simpleRouting"
     assert connected["dialPhone"] == PASSENGER
+
+
+def test_a_winner_who_left_the_line_is_rung_and_connected_on_callback(client):
+    """A voice-campaign bidder is not on hold when the window closes, so the
+    award has to reach them as a flash call and their callback as the ride."""
+    with db.session_scope() as session:
+        driver = drivers.register(session, DRIVER, status="active")
+        order = db.Order(call_id="x", phone=PASSENGER, origin="ירושלים", destination="בני ברק")
+        session.add(order)
+        session.flush()
+        result = dispatch.open_tender(session, order, area="ירושלים")
+        tender = session.get(db.Tender, result["tender_id"])
+        dispatch.place_bid(session, tender, driver)
+        tender.closes_at = tender.opened_at
+        dispatch.close_tender(session, tender)
+
+        awarded = session.scalars(
+            db.select(db.FlashCall).where(db.FlashCall.kind == "award")
+        ).all()
+        assert [row.phone for row in awarded] == [driver.phone]
+
+    won = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
+    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_connecting"]
+    connected = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
+    assert connected == {"type": "simpleRouting", "dialPhone": PASSENGER}
 
 
 def test_ringing_in_confirms_a_pending_referral(client):
