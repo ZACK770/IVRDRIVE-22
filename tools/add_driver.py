@@ -1,8 +1,10 @@
 """Add a driver to the dispatch database from the command line.
 
 Examples:
-    python tools/add_driver.py --phone 0521111111 --name "ישראל" --areas "בני ברק,ירושלים" --status active
-    BOT_DB_URL=postgresql://... python tools/add_driver.py --phone 0522222222 --areas "ירושלים" --voice-offers
+    python tools/add_driver.py --phone 0521111111 --name "ישראל" \
+        --areas "בני ברק,ירושלים" --status active
+    BOT_DB_URL=postgresql://... python tools/add_driver.py --phone 0522222222 \
+        --areas "ירושלים" --voice-offers
 """
 
 from __future__ import annotations
