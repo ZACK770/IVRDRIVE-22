@@ -303,7 +303,11 @@ def get_tender(tender_id: int) -> dict:
             "called": [
                 {
                     "driver_id": c.driver_id,
-                    "driver_name": drivers_by_id.get(c.driver_id, db.Driver()).name if c.driver_id else None,
+                    "driver_name": (
+                        drivers_by_id.get(c.driver_id, db.Driver()).name
+                        if c.driver_id
+                        else None
+                    ),
                     "phone": c.phone,
                     "cid": c.cid,
                     "status": c.status,
@@ -368,6 +372,9 @@ def create_order(payload: Payload, actor: Actor) -> dict:
             pickup_time=payload.get("pickup_time") or None,
             price=float(payload["price"]) if payload.get("price") not in (None, "") else None,
             notes=payload.get("notes") or None,
+            vehicle_type=payload.get("vehicle_type") or None,
+            luggage=payload.get("luggage") or None,
+            special_requests=payload.get("special_requests") or None,
             area=payload.get("area") or origin,
         )
         session.add(order)

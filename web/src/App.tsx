@@ -124,6 +124,9 @@ function Board() {
             <th>מוצא</th>
             <th>יעד</th>
             <th>נוסעים</th>
+            <th>סוג רכב</th>
+            <th>מטען</th>
+            <th>בקשות</th>
             <th>לאיסוף</th>
             <th>מחיר</th>
             <th>נהג</th>
@@ -139,6 +142,9 @@ function Board() {
               <td data-label="מוצא">{order.origin}</td>
               <td data-label="יעד">{order.destination}</td>
               <td data-label="נוסעים">{order.passengers}</td>
+              <td data-label="סוג רכב">{order.vehicle_type ?? "—"}</td>
+              <td data-label="מטען">{order.luggage ?? "—"}</td>
+              <td data-label="בקשות">{order.special_requests ?? "—"}</td>
               <td data-label="לאיסוף">{order.pickup_time ?? "—"}</td>
               <td data-label="מחיר">{order.price === null ? "—" : `${order.price.toFixed(0)} ₪`}</td>
               <td data-label="נהג">
@@ -180,7 +186,7 @@ function Board() {
           ))}
           {shown.length === 0 && (
             <tr>
-              <td colSpan={10} className="muted">
+              <td colSpan={13} className="muted">
                 אין הזמנות להצגה.
               </td>
             </tr>
@@ -194,10 +200,13 @@ function Board() {
 /** Orders taken by phone at the desk; ticking the box rings the area's drivers
  *  the moment the order is saved. */
 function NewOrder({ onCreated }: { onCreated: () => void }) {
-  const blank = { phone: "", origin: "", destination: "", price: "", pickup_time: "" };
+  const blank = { phone: "", origin: "", destination: "", passengers: "", price: "", pickup_time: "", notes: "", vehicle_type: "", luggage: "", special_requests: "" };
   const [form, setForm] = useState(blank);
   const [tender, setTender] = useState(true);
   const [note, setNote] = useState("");
+
+  const numeric = (key: keyof typeof blank, value: string) =>
+    setForm((current) => ({ ...current, [key]: value === "" ? "" : value }));
 
   return (
     <div className="panel">
@@ -223,6 +232,40 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
           />
         </label>
         <label>
+          מספר נוסעים
+          <input
+            type="number"
+            min={1}
+            value={form.passengers || ""}
+            placeholder="1"
+            onChange={(e) => numeric("passengers", e.target.value)}
+          />
+        </label>
+        <label>
+          סוג רכב
+          <input
+            value={form.vehicle_type}
+            placeholder="למשל סיאנה, טסלה"
+            onChange={(e) => setForm({ ...form, vehicle_type: e.target.value })}
+          />
+        </label>
+        <label>
+          מטען / מזוודות
+          <input
+            value={form.luggage}
+            placeholder="למשל 2 מזוודות גדולות"
+            onChange={(e) => setForm({ ...form, luggage: e.target.value })}
+          />
+        </label>
+        <label>
+          בקשות מיוחדות
+          <input
+            value={form.special_requests}
+            placeholder="למשל כיסא תינוק, נהג מבוגר"
+            onChange={(e) => setForm({ ...form, special_requests: e.target.value })}
+          />
+        </label>
+        <label>
           מחיר מוסכם
           <input
             type="number"
@@ -235,6 +278,13 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
           <input
             value={form.pickup_time}
             onChange={(e) => setForm({ ...form, pickup_time: e.target.value })}
+          />
+        </label>
+        <label>
+          הערות
+          <input
+            value={form.notes}
+            onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
         </label>
         <label className="check">
@@ -254,8 +304,13 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
               phone: form.phone,
               origin: form.origin,
               destination: form.destination,
+              passengers: form.passengers ? Number(form.passengers) : undefined,
               pickup_time: form.pickup_time || undefined,
               price: form.price ? Number(form.price) : undefined,
+              notes: form.notes || undefined,
+              vehicle_type: form.vehicle_type || undefined,
+              luggage: form.luggage || undefined,
+              special_requests: form.special_requests || undefined,
               tender,
             })
             .then((created) => {

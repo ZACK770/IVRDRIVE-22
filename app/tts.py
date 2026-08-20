@@ -9,12 +9,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 
 import edge_tts
 
 log = logging.getLogger("tts")
 
-VOICE = "he-IL-AvriNeural"
+VOICE = os.getenv("TTS_VOICE", "he-IL-AvriNeural")
 
 
 def synthesize(text: str) -> bytes:
@@ -38,10 +39,16 @@ def offer_text(order) -> str:
         f"מוצא: {order.origin or 'לא ידוע'}.",
         f"יעד: {order.destination or 'לא ידוע'}.",
     ]
+    if order.vehicle_type:
+        parts.append(f"סוג רכב: {order.vehicle_type}.")
     if order.price:
         parts.append(f"מחיר: {order.price:.0f} שקלים.")
     if order.pickup_time:
         parts.append(f"מועד איסוף: {order.pickup_time}.")
+    if order.luggage:
+        parts.append(f"מטען: {order.luggage}.")
+    if order.special_requests:
+        parts.append(f"בקשות: {order.special_requests}.")
     parts.append("אם אתה מעוניין בנסיעה, הקש 1.")
     return " ".join(parts)
 
@@ -50,7 +57,15 @@ def offer_text(order) -> str:
 #: in the code; the file written to disk is the PBX audio-library name, which
 #: defaults to the value in ``app/ivr.DEFAULT_AUDIO``.
 AUDIO_TEXTS: dict[str, str] = {
-    "driver_menu": "שלום למערכת דרייברים. להצעת נסיעה חדשה הקש 1. למוניטין שלך הקש 2. לעדכון אזורים הקש 3. לשעות שקט הקש 4. לעדכון מיקום הקש 5. לסיום נסיעה הקש 6.",
+    "driver_menu": (
+        "שלום למערכת דרייברים. "
+        "להצעת נסיעה חדשה הקש 1. "
+        "למוניטין שלך הקש 2. "
+        "לעדכון אזורים הקש 3. "
+        "לשעות שקט הקש 4. "
+        "לעדכון מיקום הקש 5. "
+        "לסיום נסיעה הקש 6."
+    ),
     "driver_register": "כדי להירשם כנהג, הקש 1 ולאחר מכן תועבר להשלמת פרטים.",
     "driver_saved": "הפרטים נשמרו. תודה.",
     "driver_pending": "הרישום שלך ממתין לאישור המשרד. תוכל לחזור מאוחר יותר.",
@@ -59,8 +74,14 @@ AUDIO_TEXTS: dict[str, str] = {
     "driver_taken": "מצטערים, הנסיעה כבר נתפסה על ידי נהג אחר.",
     "driver_no_offer": "כרגע אין הצעה פתוחה בשטח. נסה שוב מאוחר יותר.",
     "driver_connecting": "מזל טוב, זכית בנסיעה. מחבר אותך עכשיו לנוסע.",
-    "driver_reputation": "המוניטין שלך נבנה מדירוגי נוסעים, ותק, גיל, רכב וכמות נסיעות. לפרטים פרטיים תקבל הודעת טקסט.",
-    "driver_areas_menu": "להוספת אזור הקש 1. להסרת אזור הקש 2. לשמיעת האזורים שלך הקש 3. ליציאה הקש 4.",
+    "driver_reputation": (
+        "המוניטין שלך נבנה מדירוגי נוסעים, ותק, גיל, רכב וכמות נסיעות. "
+        "לפרטים פרטיים תקבל הודעת טקסט."
+    ),
+    "driver_areas_menu": (
+        "להוספת אזור הקש 1. להסרת אזור הקש 2. "
+        "לשמיעת האזורים שלך הקש 3. ליציאה הקש 4."
+    ),
     "driver_area_prompt": "הקש את מספר האזור שבו תרצה לקבל הצעות.",
     "driver_area_add_prompt": "הקש את מספר האזור שברצונך להוסיף.",
     "driver_area_remove_prompt": "הקש את מספר האזור שברצונך להסיר.",
@@ -72,7 +93,13 @@ AUDIO_TEXTS: dict[str, str] = {
     "driver_location_prompt": "הקש את מספר האזור שבו אתה נמצא כרגע.",
     "driver_location_done": "המיקום נשמר. תודה.",
     "driver_finish_done": "הנסיעה סומנה כבוצעה. ניקוד, דירוג ועמלה יעודכנו אוטומטית.",
-    "passenger_menu": "שלום למוקד דרייברים. לבדיקת יתרת נקודות הקש 1. למימוש נסיעה חינם הקש 2. למבצע שתפו וסעו הקש 3. לעדכון העדפות הקש 4.",
+    "passenger_menu": (
+        "שלום למוקד דרייברים. "
+        "לבדיקת יתרת נקודות הקש 1. "
+        "למימוש נסיעה חינם הקש 2. "
+        "למבצע שתפו וסעו הקש 3. "
+        "לעדכון העדפות הקש 4."
+    ),
     "passenger_balance": "יתרת הנקודות שלך נבדקת ותשלח אליך בהודעת טקסט. תודה.",
     "passenger_redeem_ok": "יש לך מספיק נקודות. הנסיעה הזאת תחוייב באפס שקלים.",
     "passenger_redeem_no": "אין מספיק נקודות לנסיעה חינם, או שאין הזמנה פתוחה.",

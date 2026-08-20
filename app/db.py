@@ -91,6 +91,9 @@ class Order(Base):
     pickup_time: Mapped[str | None] = mapped_column(String(120))
     price: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
+    vehicle_type: Mapped[str | None] = mapped_column(String(120))
+    luggage: Mapped[str | None] = mapped_column(Text)
+    special_requests: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
     exported: Mapped[bool] = mapped_column(Boolean, default=False)
     #: Lifecycle spine: loyalty points, driver payouts and the rating call all
@@ -416,12 +419,14 @@ DEFAULT_PROMPT = (
     "פעם אחת, לפני האישור הסופי.\n"
     "אם הלקוח שואל משהו שאינו קשור להסעות, ענה במשפט אחד קצר וחזור מיד "
     "לשאלה הבאה שחסרה לך.\n"
-    "עליך לאסוף: כתובת מוצא, כתובת יעד, מספר נוסעים ומועד הנסיעה.\n"
+    "עליך לאסוף: כתובת מוצא, כתובת יעד, מספר נוסעים, מועד הנסיעה, סוג רכב "
+    "(למשל סיאנה או טסלה), כמות מטען/מזוודות וכל בקשה מיוחדת. שאל עליהם בקצרה.\n"
     "אל תמציא מחיר לעולם — השתמש בכלי lookup_price. אם אין מחיר במערכת, אמור "
     "שנציג יחזור עם הצעת מחיר.\n"
     "אם הלקוח מתקשר שוב זמן קצר אחרי שיחה קודמת, השתמש ב-get_recent_call כדי "
     "להמשיך מאיפה שהפסקתם במקום להתחיל מחדש.\n"
-    "בסיום, קרא ל-save_order כדי לשמור את ההזמנה, ואז סכם ללקוח בקצרה."
+    "בסיום, קרא ל-save_order כדי לשמור את ההזמנה, סכם ללקוח בקצרה, ואז קרא "
+    "ל-hangup_call כדי לנתק את השיחה."
 )
 
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from app import db, dispatch, drivers, ivr, loyalty, ratings, referrals, tts
+from app import db, dispatch, drivers, loyalty, ratings, referrals, tts
 from app.main import app
 
 #: The subset of the documented module list this service emits.

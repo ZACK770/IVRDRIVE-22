@@ -21,17 +21,22 @@ TIMEOUT_S = 5
 
 def format_order(order: dict[str, object]) -> str:
     price = order.get("price")
-    return "\n".join(
-        [
-            "הזמנה חדשה ממוקד דרייברים",
-            f"טלפון: {order.get('phone', '')}",
-            f"מוצא: {order.get('origin', '')}",
-            f"יעד: {order.get('destination', '')}",
-            f"נוסעים: {order.get('passengers', '')}",
-            f"מועד: {order.get('pickup_time') or 'לא צוין'}",
-            f"מחיר: {price if price is not None else 'לא נקבע'}",
-        ]
-    )
+    lines = [
+        "הזמנה חדשה ממוקד דרייברים",
+        f"טלפון: {order.get('phone', '')}",
+        f"מוצא: {order.get('origin', '')}",
+        f"יעד: {order.get('destination', '')}",
+        f"נוסעים: {order.get('passengers', '')}",
+        f"מועד: {order.get('pickup_time') or 'לא צוין'}",
+        f"מחיר: {price if price is not None else 'לא נקבע'}",
+    ]
+    if order.get("vehicle_type"):
+        lines.append(f"סוג רכב: {order['vehicle_type']}")
+    if order.get("luggage"):
+        lines.append(f"מטען: {order['luggage']}")
+    if order.get("special_requests"):
+        lines.append(f"בקשות: {order['special_requests']}")
+    return "\n".join(lines)
 
 
 def send_order(order: dict[str, object]) -> bool:

@@ -262,7 +262,11 @@ def orders_page() -> HTMLResponse:
         listed = "".join(
             f"<tr><td>{r.created_at:%d/%m %H:%M}</td><td>{escape(r.phone)}</td>"
             f"<td>{escape(r.origin)}</td><td>{escape(r.destination)}</td>"
-            f"<td>{r.passengers}</td><td>{escape(r.pickup_time or '')}</td>"
+            f"<td>{r.passengers}</td>"
+            f"<td>{escape(r.vehicle_type or '')}</td>"
+            f"<td>{escape(r.luggage or '')}</td>"
+            f"<td>{escape(r.special_requests or '')}</td>"
+            f"<td>{escape(r.pickup_time or '')}</td>"
             f"<td>{'' if r.price is None else f'{r.price:.0f}'}</td></tr>"
             for r in rows
         )
@@ -270,7 +274,8 @@ def orders_page() -> HTMLResponse:
         "הזמנות",
         f"""<p><a href="/admin/orders.xlsx">הורדה כאקסל</a></p>
         <table><tr><th>מועד</th><th>טלפון</th><th>מוצא</th><th>יעד</th>
-        <th>נוסעים</th><th>לאיסוף</th><th>מחיר</th></tr>{listed}</table>""",
+        <th>נוסעים</th><th>סוג רכב</th><th>מטען</th><th>בקשות</th>
+        <th>לאיסוף</th><th>מחיר</th></tr>{listed}</table>""",
     )
 
 
@@ -280,7 +285,19 @@ def orders_export() -> Response:
     sheet = book.active
     sheet.title = "orders"
     sheet.append(
-        ["מועד יצירה", "טלפון", "מוצא", "יעד", "נוסעים", "מועד איסוף", "מחיר", "הערות"]
+        [
+            "מועד יצירה",
+            "טלפון",
+            "מוצא",
+            "יעד",
+            "נוסעים",
+            "סוג רכב",
+            "מטען",
+            "בקשות",
+            "מועד איסוף",
+            "מחיר",
+            "הערות",
+        ]
     )
     with db.session_scope() as session:
         for r in session.scalars(select(db.Order).order_by(db.Order.created_at)).all():
@@ -291,6 +308,9 @@ def orders_export() -> Response:
                     r.origin,
                     r.destination,
                     r.passengers,
+                    r.vehicle_type or "",
+                    r.luggage or "",
+                    r.special_requests or "",
                     r.pickup_time or "",
                     r.price,
                     r.notes or "",

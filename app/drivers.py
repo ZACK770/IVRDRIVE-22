@@ -285,6 +285,10 @@ def matches_filters(driver: db.Driver, filters: dict, *, now: datetime | None = 
         return False
     if (min_seats := filters.get("min_seats")) and int(driver.seats or 0) < int(min_seats):
         return False
+    if (vehicle_type := filters.get("vehicle_type")):
+        car = (driver.car_model or "").lower()
+        if vehicle_type.lower() not in car:
+            return False
     if (want := filters.get("smartphone")) is not None and bool(driver.smartphone) != bool(want):
         return False
     if (want := filters.get("voice_offers")) is not None and bool(

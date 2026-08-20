@@ -21,7 +21,7 @@ ENDPOINT = (
 
 #: Fastest model with native audio in/out at the time of the bake-off.
 DEFAULT_MODEL = os.getenv("GEMINI_LIVE_MODEL", "models/gemini-3.1-flash-live-preview")
-DEFAULT_VOICE = os.getenv("GEMINI_LIVE_VOICE", "Alnilam")  # firm, male
+DEFAULT_VOICE = os.getenv("GEMINI_LIVE_VOICE", "Orus")  # clear, male
 
 INPUT_RATE = 16000
 OUTPUT_RATE = 24000

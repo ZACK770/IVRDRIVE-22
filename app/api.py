@@ -46,6 +46,9 @@ def _order_json(row: db.Order) -> dict:
         "pickup_time": row.pickup_time,
         "price": row.price,
         "notes": row.notes,
+        "vehicle_type": row.vehicle_type,
+        "luggage": row.luggage,
+        "special_requests": row.special_requests,
         "status": row.status,
         "driver_name": row.driver_name,
         "driver_phone": row.driver_phone,
@@ -88,6 +91,18 @@ def update_order(order_id: int, payload: Annotated[dict, Body()]) -> dict:
             row.driver_phone = payload["driver_phone"] or None
         if "price" in payload:
             row.price = payload["price"]
+        if "passengers" in payload:
+            row.passengers = int(payload["passengers"]) or 1
+        if "pickup_time" in payload:
+            row.pickup_time = payload["pickup_time"] or None
+        if "notes" in payload:
+            row.notes = payload["notes"] or None
+        if "vehicle_type" in payload:
+            row.vehicle_type = payload["vehicle_type"] or None
+        if "luggage" in payload:
+            row.luggage = payload["luggage"] or None
+        if "special_requests" in payload:
+            row.special_requests = payload["special_requests"] or None
         session.flush()
         return _order_json(row)
 
@@ -196,7 +211,12 @@ def create_price(payload: Annotated[dict, Body()]) -> dict:
             row.price = price
             row.updated_at = datetime.utcnow()
         session.flush()
-        return {"id": row.id, "origin": row.origin, "destination": row.destination, "price": row.price}
+        return {
+            "id": row.id,
+            "origin": row.origin,
+            "destination": row.destination,
+            "price": row.price,
+        }
 
 
 @router.delete("/prices/{price_id}")

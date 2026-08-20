@@ -49,6 +49,7 @@ class CallBridge:
         self._session: GeminiLiveSession | None = None
         self._last_user_audio: float | None = None
         self._speaking = False
+        self._hangup_after_response = False
         self._meter = cost.UsageMeter()
         self.stats: dict[str, object] = {
             "caller": self._tools.caller,
@@ -98,6 +99,16 @@ class CallBridge:
                 return
             self._cap.record("out", "binary", frame)
 
+    async def _drain_and_close(self, *, delay_s: float = 0.3) -> None:
+        """Give the final audio frames time to reach the PBX before closing."""
+        deadline = time.monotonic() + delay_s
+        while time.monotonic() < deadline and self._out:
+            await asyncio.sleep(FRAME_S)
+        try:
+            await self._ws.close()
+        except Exception:
+            pass
+
     def _enqueue(self, pcm8k: bytes) -> None:
         data = self._partial + pcm8k
         whole = len(data) - (len(data) % FRAME_BYTES)
@@ -130,6 +141,9 @@ class CallBridge:
             elif kind == "turn_complete":
                 self.stats["turns"] += 1
                 self._speaking = False
+                if self._hangup_after_response:
+                    await self._drain_and_close()
+                    return
             elif kind == "transcript":
                 self.stats["transcript"].append(f"{event['who']}: {event['text']}")
                 log.info("[%s] %s: %s", self._cap.call_id, event["who"], event["text"])
@@ -141,6 +155,8 @@ class CallBridge:
                     responses.append(
                         {"id": call.get("id"), "name": call["name"], "response": result}
                     )
+                    if call["name"] == "hangup_call" and result.get("hung_up"):
+                        self._hangup_after_response = True
                 await self._session.send_tool_responses(responses)
             elif kind == "usage":
                 self._meter.add(event["usage"])

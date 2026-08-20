@@ -20,7 +20,6 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 from datetime import datetime, timedelta
 
 from sqlalchemy import select

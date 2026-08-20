@@ -300,11 +300,19 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         if dtmf == "1":
             state["area_action"] = "add"
             _save(row, "area_select", state)
-            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_add_prompt"], keys="1,2,3,4,5,6,7,8,9")
+            return menu(
+                "driver_areas_menu",
+                text=tts.AUDIO_TEXTS["driver_area_add_prompt"],
+                keys="1,2,3,4,5,6,7,8,9",
+            )
         if dtmf == "2":
             state["area_action"] = "remove"
             _save(row, "area_select", state)
-            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_remove_prompt"], keys="1,2,3,4,5,6,7,8,9")
+            return menu(
+                "driver_areas_menu",
+                text=tts.AUDIO_TEXTS["driver_area_remove_prompt"],
+                keys="1,2,3,4,5,6,7,8,9",
+            )
         if dtmf == "3":
             areas_text = drivers.areas_list_text(session, driver)
             menu_text = f"{areas_text} {tts.AUDIO_TEXTS['driver_areas_menu']}"
@@ -321,7 +329,11 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         action = state.get("area_action")
         if area is None or driver is None:
             _save(row, "areas", state)
-            return menu("driver_areas_menu", text=tts.AUDIO_TEXTS["driver_area_prompt"], keys="1,2,3,4")
+            return menu(
+                "driver_areas_menu",
+                text=tts.AUDIO_TEXTS["driver_area_prompt"],
+                keys="1,2,3,4",
+            )
         if action == "add":
             result = drivers.add_area(session, driver, area.name)
             prompt = "driver_area_added" if result["ok"] else "driver_area_already"

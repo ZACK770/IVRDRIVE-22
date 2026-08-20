@@ -63,7 +63,8 @@ DECLARATIONS: list[dict[str, Any]] = [
         "name": "save_order",
         "description": (
             "שמירת ההזמנה בסיום ופתיחת מכרז לנהגים. קרא לזה רק אחרי שהלקוח אישר את הפרטים. "
-            "אם הלקוח מבקש נהג ספציפי (רכב חדש, נהג מבוגר, בלי סמארטפון וכו'), מלא את tender_filters."
+            "אם הלקוח מבקש נהג ספציפי "
+            "(רכב חדש, נהג מבוגר, בלי סמארטפון וכו'), מלא את tender_filters."
         ),
         "parameters": {
             "type": "object",
@@ -74,13 +75,23 @@ DECLARATIONS: list[dict[str, Any]] = [
                 "pickup_time": {"type": "string", "description": "מועד הנסיעה כפי שנמסר"},
                 "price": {"type": "number"},
                 "notes": {"type": "string"},
+                "vehicle_type": {
+                    "type": "string",
+                    "description": "סוג רכב מבוקש, למשל סיאנה או טסלה",
+                },
+                "luggage": {"type": "string", "description": "כמות מזוודות או מטען"},
+                "special_requests": {"type": "string", "description": "בקשות מיוחדות נוספות"},
                 "tender_area": {
                     "type": "string",
                     "description": "אזור לצינתוק. ברירת מחדל: מוצא הנסיעה.",
                 },
                 "tender_filters": {
                     "type": "object",
-                    "description": "סינון נהגים: min_car_year, min_age, min_rating, min_seats, smartphone (true/false), voice_offers (true/false), tiers (['standard','pro','pro_plus','premium'])",
+                    "description": (
+                        "סינון נהגים: min_car_year, min_age, min_rating, min_seats, "
+                        "smartphone (true/false), voice_offers (true/false), "
+                        "vehicle_type (למשל סיאנה), tiers (['standard','pro','pro_plus','premium'])"
+                    ),
                     "properties": {
                         "min_car_year": {"type": "integer"},
                         "min_seats": {"type": "integer"},
@@ -88,6 +99,7 @@ DECLARATIONS: list[dict[str, Any]] = [
                         "min_rating": {"type": "number"},
                         "smartphone": {"type": "boolean"},
                         "voice_offers": {"type": "boolean"},
+                        "vehicle_type": {"type": "string"},
                         "tiers": {"type": "array", "items": {"type": "string"}},
                     },
                 },
@@ -98,6 +110,11 @@ DECLARATIONS: list[dict[str, Any]] = [
             },
             "required": ["origin", "destination", "passengers"],
         },
+    },
+    {
+        "name": "hangup_call",
+        "description": "נתק את השיחה לאחר שסיכמת את ההזמנה והלקוח אישר. קרא לזה בסיום.",
+        "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "redeem_order",
@@ -162,6 +179,7 @@ class ToolContext:
             "lookup_price": self._lookup_price,
             "get_points": self._get_points,
             "save_order": self._save_order,
+            "hangup_call": self._hangup_call,
             "redeem_order": self._redeem_order,
             "create_referral": self._create_referral,
         }
@@ -224,6 +242,9 @@ class ToolContext:
                         "passengers": last_order.passengers,
                         "pickup_time": last_order.pickup_time,
                         "price": last_order.price,
+                        "vehicle_type": last_order.vehicle_type,
+                        "luggage": last_order.luggage,
+                        "special_requests": last_order.special_requests,
                     }
                     if last_order
                     else None
@@ -270,6 +291,9 @@ class ToolContext:
                 pickup_time=args.get("pickup_time"),
                 price=args.get("price"),
                 notes=args.get("notes"),
+                vehicle_type=args.get("vehicle_type"),
+                luggage=args.get("luggage"),
+                special_requests=args.get("special_requests"),
                 area=args.get("tender_area") or args.get("origin", ""),
             )
             session.add(order)
@@ -283,6 +307,10 @@ class ToolContext:
                 "passengers": order.passengers,
                 "pickup_time": order.pickup_time,
                 "price": order.price,
+                "notes": order.notes,
+                "vehicle_type": order.vehicle_type,
+                "luggage": order.luggage,
+                "special_requests": order.special_requests,
             }
         # The order is now committed; anything that talks to the PBX happens off
         # the bot's call thread so the caller never waits on a ring-out.
@@ -308,6 +336,9 @@ class ToolContext:
             ).start()
         threading.Thread(target=notify.send_order, args=(payload,), daemon=True).start()
         return {"saved": True, "order_id": payload["order_id"]}
+
+    def _hangup_call(self, _args: dict[str, Any]) -> dict[str, Any]:
+        return {"hung_up": True}
 
     def _redeem_order(self, _args: dict[str, Any]) -> dict[str, Any]:
         order_id = self.saved_order_id
@@ -345,10 +376,10 @@ class ToolContext:
                 )
                 if result["ok"]:
                     pbx.flash_call(
+                        session,
                         invited,
                         kind="referral",
                         cid=None,
-                        note=f"referral from {self.caller}",
                     )
                 return result
         except Exception:

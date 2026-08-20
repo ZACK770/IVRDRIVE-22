@@ -36,6 +36,9 @@ export interface Order {
   pickup_time: string | null;
   price: number | null;
   notes: string | null;
+  vehicle_type: string | null;
+  luggage: string | null;
+  special_requests: string | null;
   status: OrderStatus;
   driver_name: string | null;
   driver_phone: string | null;
@@ -142,6 +145,7 @@ export interface TenderFilters {
   min_rating?: number;
   smartphone?: boolean;
   voice_offers?: boolean;
+  vehicle_type?: string;
   tiers?: string[];
 }
 
@@ -341,6 +345,9 @@ export const api = {
     pickup_time?: string;
     price?: number;
     notes?: string;
+    vehicle_type?: string;
+    luggage?: string;
+    special_requests?: string;
     tender?: boolean;
   }) => write<{ id: number }>("/api/orders", order),
   clubMembers: () =>
