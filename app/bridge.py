@@ -16,7 +16,7 @@ import time
 from datetime import datetime
 from typing import Any
 
-from app import audio, capture, cost, db, prompt, tools
+from app import audio, capture, cost, db, notify, prompt, tools
 from app.gemini_live import GeminiLiveSession
 
 log = logging.getLogger("bridge")
@@ -167,7 +167,7 @@ class CallBridge:
                     if call["name"] == "hangup_call" and result.get("hung_up"):
                         self._hangup_after_response = True
                     if call["name"] == "transfer_to_representative":
-                        self._handle_transfer(result)
+                        await self._handle_transfer(result)
                         return
                 await self._session.send_tool_responses(responses)
             elif kind == "usage":
@@ -178,11 +178,15 @@ class CallBridge:
 
     # ------------------------------------------------------------------- life
 
-    def _handle_transfer(self, result: dict[str, Any]) -> None:
+    async def _handle_transfer(self, result: dict[str, Any]) -> None:
         """Transfer to the configured extension, or gracefully tell the caller
         the office will call back and hang up if the PBX does not understand."""
         if not result.get("ok"):
             log.warning("[%s] transfer failed: %s", self._cap.call_id, result)
+            await self._session.send_text(
+                "אמור בקצרה: לא מוגדר מספר נציג כרגע, נציג יחזור אליך בהקדם. סיים את השיחה."
+            )
+            self._hangup_after_response = True
             return
         phone = str(result.get("transfer_to") or "")
         if not phone:
@@ -194,14 +198,10 @@ class CallBridge:
         # Best-effort: send the frame the PBX may expect, then close so the call
         # ends cleanly even if the parallel channel ignores it.
         try:
-            asyncio.get_running_loop().call_soon(
-                lambda: asyncio.create_task(self._ws.send_text(frame))
-            )
+            await self._ws.send_text(frame)
             log.info("[%s] sent transfer frame: %s", self._cap.call_id, frame)
         except Exception:
             log.exception("[%s] failed to send transfer frame", self._cap.call_id)
-        from app import notify
-
         notify.send_text(
             f"הלקוח {self._tools.caller} ביקש נציג; בוצעה העברה/סיום שיחה ל-{phone}.",
             kind="transfer",
