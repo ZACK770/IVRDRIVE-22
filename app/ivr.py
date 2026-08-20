@@ -88,6 +88,15 @@ def message(key: str, **extra: Any) -> dict:
     return {"type": "simpleMessage", "fileName": audio(key), **extra}
 
 
+def _digits_from_keys(keys: str | None) -> tuple[int, int]:
+    """Derive min/max digit length from a comma-separated enabled-keys list."""
+    if not keys:
+        return 1, 1
+    parts = [p.strip() for p in keys.split(",") if p.strip()]
+    lengths = [len(p) for p in parts]
+    return min(lengths), max(lengths)
+
+
 def menu(
     key: str,
     *,
@@ -97,7 +106,13 @@ def menu(
     file_name: str | None = None,
     text: str | None = None,
 ) -> dict:
-    """Return a simpleMenu module per the Technoline Module API spec."""
+    """Return a simpleMenu module per the Technoline Module API spec.
+
+    The PBX documented fields are ``fileName``/``files`` for audio and
+    ``min_digits``/``max_digits``/``tries``/``timeout`` for capture.  We derive
+    ``min_digits``/``max_digits`` from the supplied ``keys`` so multi-digit
+    options (e.g. area lists longer than nine) still work.
+    """
     if file_name:
         files = [{"fileName": file_name}]
     elif text:
@@ -106,20 +121,21 @@ def menu(
         files = [{"text": tts.AUDIO_TEXTS[key]}]
     else:
         files = [{"fileName": audio(key)}]
+    min_digits, max_digits = _digits_from_keys(keys)
     return {
         "type": "simpleMenu",
-        "name": "dtmf",
-        "enabledKeys": keys,
-        "times": tries,
-        "timeout": timeout,
         "files": files,
+        "min_digits": min_digits,
+        "max_digits": max_digits,
+        "tries": tries,
+        "timeout": timeout,
     }
 
 
 def get_digits(*, min_digits: int = 1, max_digits: int = 10, timeout: int = 8) -> dict:
+    """Return a getDTMF module per the Technoline Module API spec."""
     return {
         "type": "getDTMF",
-        "name": "dtmf",
         "min_digits": min_digits,
         "max_digits": max_digits,
         "timeout": timeout,
