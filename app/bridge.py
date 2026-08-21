@@ -216,8 +216,9 @@ class CallBridge:
             self._api_key, system_prompt, tools=tools.DECLARATIONS
         ) as session:
             self._session = session
-            if GREETING:
-                await session.send_text(f"אמור עכשיו בדיוק את המשפט הזה: {GREETING}")
+            greeting = db.get_botconfig().get("opening_sentence") or prompt.GREETING
+            if greeting:
+                await session.send_text(f"אמור עכשיו בדיוק את המשפט הזה: {greeting}")
             tasks = [
                 asyncio.create_task(self._pump_input()),
                 asyncio.create_task(self._pump_output()),

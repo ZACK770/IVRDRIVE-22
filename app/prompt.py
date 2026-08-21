@@ -1,14 +1,9 @@
-"""Everything the dispatcher bot is told, in one place.
+"""Default building blocks for the runtime prompt.
 
-This is the single control surface for the bot's behaviour: identity, the iron
-rules, which details it collects, when it may quote a price, when it may hand a
-caller to a human, and when it hangs up. Nothing else in the codebase should
-carry conversational policy — a rule that lives in a tool description or in the
-bridge is a rule the office cannot find.
-
-The console prompt page overrides `SYSTEM_PROMPT` per installation. While no
-override exists, the text below is what every call uses, so editing this file is
-enough to change the bot in production.
+The real control surface is `BotConfig` (database / console).  `botconfig_to_prompt`
+generates the actual system prompt from that row.  The constants here are only
+fallback defaults for fields an operator has not customised, plus legacy prompts
+for detecting un-edited stored prompts during upgrades.
 """
 
 from __future__ import annotations
@@ -16,7 +11,7 @@ from __future__ import annotations
 import os
 
 #: Spoken verbatim as the call opens, before the caller says anything.
-GREETING = os.getenv("BOT_GREETING", "ברוך הבא למוקד דרייברים, איך אפשר לעזור?")
+GREETING = os.getenv("BOT_GREETING", "שלום, הגעת למוקד הדרייברים החרדי. איך אפשר לעזור?")
 
 IDENTITY = (
     "אתה נציג טלפוני של מוקד ההסעות 'דרייברים'. דבר עברית בלבד."
