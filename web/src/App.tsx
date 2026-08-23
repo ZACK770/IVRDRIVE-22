@@ -4,7 +4,9 @@ import { BotConfig } from "./BotConfig";
 import { Club } from "./Club";
 import { AreaBoard, Tenders } from "./Dispatch";
 import { Drivers } from "./Drivers";
+import { Live } from "./Live";
 import { Settings } from "./Settings";
+import { ToastProvider, useToast } from "./ui";
 import { clock, usePoll } from "./usePoll";
 import {
   actorStore,
@@ -20,6 +22,7 @@ import {
 import "./styles.css";
 
 const TABS = {
+  live: "לייב",
   board: "לוח סדרן",
   areas: "נהגים באזור",
   tenders: "מכרזים",
@@ -48,7 +51,7 @@ function Board() {
   const summary = usePoll<Summary>(loadSummary, 10);
   const orders = usePoll<Order[]>(loadOrders, 5);
   const [filter, setFilter] = useState<OrderStatus | "all">("all");
-  const [error, setError] = useState("");
+  const toast = useToast();
 
   const shown = useMemo(
     () =>
@@ -56,29 +59,28 @@ function Board() {
     [orders.data, filter],
   );
 
-  const [note, setNote] = useState("");
-
   const patch = (order: Order, change: Partial<Order>) => {
     api
       .updateOrder(order.id, change)
-      .then(() => orders.refresh())
-      .catch((err: Error) => setError(err.message));
+      .then(() => {
+        toast.success(`הזמנה ${order.id} עודכנה`);
+        orders.refresh();
+      })
+      .catch((err: Error) => toast.error(`עדכון נכשל: ${err.message}`));
   };
 
   const act = (promise: Promise<unknown>, message: string) =>
     promise
       .then(() => {
-        setNote(message);
-        setError("");
+        toast.success(message);
         orders.refresh();
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => toast.error(err.message));
 
   return (
     <>
       <h1>לוח סדרן</h1>
-      {(error || orders.error) && <div className="error">{error || orders.error}</div>}
-      {note && !error && <div className="muted">{note}</div>}
+      {orders.error && <div className="error">{orders.error}</div>}
       <div className="cards">
         <div className="card">
           <b>{summary.data?.orders_24h ?? "—"}</b>
@@ -202,7 +204,7 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
   const blank = { phone: "", origin: "", destination: "", passengers: "", price: "", pickup_time: "", notes: "", vehicle_type: "", luggage: "", special_requests: "" };
   const [form, setForm] = useState(blank);
   const [tender, setTender] = useState(true);
-  const [note, setNote] = useState("");
+  const toast = useToast();
 
   const numeric = (key: keyof typeof blank, value: string) =>
     setForm((current) => ({ ...current, [key]: value === "" ? "" : value }));
@@ -210,7 +212,6 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
   return (
     <div className="panel">
       <h2>הזמנה חדשה</h2>
-      {note && <div className="muted">{note}</div>}
       <div className="grid">
         <label>
           טלפון הנוסע
@@ -297,7 +298,11 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
       </div>
       <button
         className="action"
-        onClick={() =>
+        onClick={() => {
+          if (!form.phone || !form.origin || !form.destination) {
+            toast.error("חובה למלא טלפון, מוצא ויעד");
+            return;
+          }
           api
             .createOrder({
               phone: form.phone,
@@ -314,11 +319,11 @@ function NewOrder({ onCreated }: { onCreated: () => void }) {
             })
             .then((created) => {
               setForm(blank);
-              setNote(`נקלטה הזמנה ${created.id}`);
+              toast.success(`נקלטה הזמנה ${created.id}${tender ? " ונשלח צינתוק" : ""}`);
               onCreated();
             })
-            .catch((err: Error) => setNote(err.message))
-        }
+            .catch((err: Error) => toast.error(`שמירת הזמנה נכשלה: ${err.message}`));
+        }}
       >
         שמור הזמנה
       </button>
@@ -419,6 +424,7 @@ function Customers() {
 }
 
 const VIEWS: Record<Tab, () => ReactElement> = {
+  live: Live,
   board: Board,
   areas: AreaBoard,
   tenders: Tenders,
@@ -432,12 +438,13 @@ const VIEWS: Record<Tab, () => ReactElement> = {
 };
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("board");
+  const [tab, setTab] = useState<Tab>("live");
   const [token, setToken] = useState(tokenStore.get());
   const [actor, setActor] = useState(actorStore.get());
   const View = VIEWS[tab];
 
   return (
+    <ToastProvider>
     <div className="app" dir="rtl">
       <nav className="sidebar">
         <div className="brand">
@@ -474,5 +481,6 @@ export default function App() {
         <View />
       </main>
     </div>
+    </ToastProvider>
   );
 }

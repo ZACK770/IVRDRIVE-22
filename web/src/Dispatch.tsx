@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { api, type BoardArea, type Tender, type TenderFilters } from "./api";
 import { clock, usePoll } from "./usePoll";
+import { Confirm, Modal, useToast } from "./ui";
 
 const TENDER_STATUS: Record<string, string> = {
   open: "פתוח",
@@ -46,11 +47,15 @@ export function Tenders() {
   const [area, setArea] = useState("");
   const [seconds, setSeconds] = useState("");
   const [filters, setFilters] = useState<TenderFilters>({});
-  const [note, setNote] = useState("");
   const [detail, setDetail] = useState<any>(null);
-  const [detailError, setDetailError] = useState("");
+  const [confirm, setConfirm] = useState<{ text: string; run: () => void } | null>(null);
+  const toast = useToast();
 
-  const open = () =>
+  const open = () => {
+    if (!orderId) {
+      toast.error("יש להזין מספר הזמנה");
+      return;
+    }
     api
       .openTender(Number(orderId), {
         area: area || undefined,
@@ -58,15 +63,18 @@ export function Tenders() {
         window_seconds: seconds ? Number(seconds) : undefined,
       })
       .then((result) => {
-        setNote(`נשלח ל-${result.eligible} נהגים (${result.flash} צינתוק, ${result.voice} קוליים)`);
+        toast.success(
+          `מכרז נפתח: נשלח ל-${result.eligible} נהגים (${result.flash} צינתוק, ${result.voice} קוליים)`,
+        );
         refresh();
       })
-      .catch((err: Error) => setNote(err.message));
+      .catch((err: Error) => toast.error(`פתיחת מכרז נכשלה: ${err.message}`));
+  };
 
   return (
     <>
       <h1>מכרזי נסיעה</h1>
-      {(error || note) && <div className={error ? "error" : "muted"}>{error || note}</div>}
+      {error && <div className="error">{error}</div>}
       <div className="panel">
         <h2>פתיחת מכרז</h2>
         <div className="grid">
@@ -167,17 +175,45 @@ export function Tenders() {
                     api
                       .tender(tender.id)
                       .then(setDetail)
-                      .catch((err: Error) => setDetailError(err.message))
+                      .catch((err: Error) => toast.error(err.message))
                   }
                 >
                   פרטים
                 </button>
                 {tender.status === "open" && (
                   <>
-                    <button onClick={() => api.closeTender(tender.id).then(refresh)}>
+                    <button
+                      onClick={() =>
+                        setConfirm({
+                          text: `לסגור את מכרז ${tender.id} עכשיו ולהכריז על זוכה?`,
+                          run: () =>
+                            api
+                              .closeTender(tender.id)
+                              .then(() => {
+                                toast.success(`מכרז ${tender.id} נסגר`);
+                                refresh();
+                              })
+                              .catch((err: Error) => toast.error(err.message)),
+                        })
+                      }
+                    >
                       סגור עכשיו
                     </button>
-                    <button onClick={() => api.cancelTender(tender.id).then(refresh)}>
+                    <button
+                      onClick={() =>
+                        setConfirm({
+                          text: `לבטל את מכרז ${tender.id} ללא זוכה?`,
+                          run: () =>
+                            api
+                              .cancelTender(tender.id)
+                              .then(() => {
+                                toast.success(`מכרז ${tender.id} בוטל`);
+                                refresh();
+                              })
+                              .catch((err: Error) => toast.error(err.message)),
+                        })
+                      }
+                    >
                       ביטול
                     </button>
                   </>
@@ -188,10 +224,18 @@ export function Tenders() {
         </tbody>
       </table>
 
-      {detailError && <div className="error">{detailError}</div>}
+      {confirm && (
+        <Confirm
+          text={confirm.text}
+          onYes={() => {
+            confirm.run();
+            setConfirm(null);
+          }}
+          onNo={() => setConfirm(null)}
+        />
+      )}
       {detail && (
-        <div className="panel">
-          <h2>פרטי מכרז #{detail.tender.id}</h2>
+        <Modal title={`פרטי מכרז #${detail.tender.id}`} onClose={() => setDetail(null)} wide>
           <p className="muted">
             הזמנה #{detail.tender.order_id} | אזור {detail.tender.area ?? "—"} | סטטוס{" "}
             {detail.tender.status}
@@ -240,7 +284,7 @@ export function Tenders() {
               ))}
             </tbody>
           </table>
-        </div>
+        </Modal>
       )}
     </>
   );

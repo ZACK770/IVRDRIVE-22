@@ -24,8 +24,10 @@ export function usePoll<T>(load: () => Promise<T>, seconds: number) {
   return { data, error, refresh };
 }
 
+/** The API sends naive UTC timestamps; without the Z they would be read as
+ *  local time and every clock on screen would be hours off. */
 export const clock = (iso: string) =>
-  new Date(iso).toLocaleString("he-IL", {
+  new Date(/Z$|[+-]\d\d:\d\d$/.test(iso) ? iso : `${iso}Z`).toLocaleString("he-IL", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
