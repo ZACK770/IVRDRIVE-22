@@ -57,6 +57,23 @@ def _tender_window(notified: int) -> int:
     return db.setting_int("tender_window_few_seconds") or db.setting_int("tender_window_seconds") or 10
 
 
+def resolve_area(session: Session, text: str | None) -> str | None:
+    """Map a free-text address ("הארזים, צפת") to the canonical area name
+    ("צפת") drivers registered for, so their preferences actually match."""
+    if not text:
+        return text
+    stripped = text.strip()
+    rows = session.scalars(select(db.Area).where(db.Area.active)).all()
+    for row in rows:
+        if row.name.strip() == stripped:
+            return row.name
+    for row in rows:
+        name = row.name.strip()
+        if name and (name in stripped or stripped in name):
+            return row.name
+    return stripped
+
+
 def open_tender(
     session: Session,
     order: db.Order,
@@ -68,7 +85,7 @@ def open_tender(
     blast: bool = True,
 ) -> dict:
     """Open the bidding on one order and ring the drivers who qualify."""
-    area = area or order.area or order.origin
+    area = resolve_area(session, area or order.area or order.origin)
     base_window = db.setting_int("tender_window_seconds") or 10
     now = datetime.utcnow()
 

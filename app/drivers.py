@@ -308,6 +308,17 @@ def matches_filters(driver: db.Driver, filters: dict, *, now: datetime | None = 
     return True
 
 
+def _area_matches(area: str, wanted: list[str]) -> bool:
+    """A ride whose area is still a free-text address ("הארזים, צפת") should
+    reach the drivers who registered for the city inside it."""
+    target = area.strip()
+    for pref in wanted:
+        pref = pref.strip()
+        if pref and (pref == target or pref in target or target in pref):
+            return True
+    return False
+
+
 def candidates(
     session: Session,
     area: str | None,
@@ -335,7 +346,7 @@ def candidates(
         if not ignore_quiet_hours and in_quiet_hours(driver, now=now):
             continue
         wanted = prefs.get(driver.id, [])
-        if area and wanted and area.strip() not in {a.strip() for a in wanted}:
+        if area and wanted and not _area_matches(area, wanted):
             continue
         if not matches_filters(driver, filters, now=now):
             continue
