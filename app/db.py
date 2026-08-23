@@ -992,6 +992,14 @@ def get_setting(key: str, default: str | None = None) -> str:
     return DEFAULT_SETTINGS.get(key, default if default is not None else "")
 
 
+def public_base_url() -> str:
+    """Where the PBX reaches our IVR module, falling back to the host platform."""
+    stored = get_setting("public_base_url")
+    if stored:
+        return stored.rstrip("/")
+    return os.getenv("RENDER_EXTERNAL_URL", "").rstrip("/")
+
+
 def set_setting(key: str, value: str) -> None:
     with session_scope() as session:
         row = session.scalars(select(Setting).where(Setting.key == key)).first()

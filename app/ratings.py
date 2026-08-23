@@ -96,7 +96,7 @@ def due_requests(session: Session, *, now: datetime | None = None) -> list[db.Ra
 
 
 def module_url(request: db.RatingRequest) -> str:
-    base = (db.get_setting("public_base_url") or "").rstrip("/")
+    base = db.public_base_url()
     return f"{base}/ivr/rating?rating={request.id}" if base else ""
 
 

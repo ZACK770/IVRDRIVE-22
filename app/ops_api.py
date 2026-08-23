@@ -157,14 +157,17 @@ def driver_flash(driver_id: int, actor: Actor) -> dict:
         driver = session.get(db.Driver, driver_id)
         if driver is None:
             raise HTTPException(status_code=404, detail="no such driver")
-        base_url = (db.get_setting("public_base_url") or "").rstrip("/")
-        result = pbx.campaign_broadcast(
-            session,
-            [(driver.id, driver.phone)],
-            tender_id=None,
-            name=f"manual-driver-{driver.id}",
-            module_url=f"{base_url}/ivr/driver" if base_url else "",
-        )
+        base_url = db.public_base_url()
+        try:
+            result = pbx.campaign_broadcast(
+                session,
+                [(driver.id, driver.phone)],
+                tender_id=None,
+                name=f"manual-driver-{driver.id}",
+                module_url=f"{base_url}/ivr/driver" if base_url else "",
+            )
+        except pbx.PbxError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
         db.log_action(
             session,
             "flash_manual",

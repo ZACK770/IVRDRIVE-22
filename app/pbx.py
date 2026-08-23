@@ -264,8 +264,11 @@ def voice_broadcast(
         "dialRetries": 1,
         "betweenRetries": 20,
     }
-    if module_url:
-        params["apiUrl"] = module_url
+    if not module_url:
+        raise PbxError(
+            "אין כתובת ציבורית למודול ה-IVR: הגדירו public_base_url כדי לשגר קמפיין"
+        )
+    params["apiUrl"] = module_url
     payload = _request("campaignRun", params, endpoint="campaignApi.php", json_body=True)
     return {"started": True, "campaign_id": payload.get("campaignId"), "response": payload}
 

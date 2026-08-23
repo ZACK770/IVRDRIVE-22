@@ -150,7 +150,13 @@ def blast_tender(session: Session, tender: db.Tender, filters: dict) -> dict:
         )
     except pbx.PbxError as exc:
         log.warning("campaign for tender %s failed: %s", tender.id, exc)
-        return {"eligible": len(ranked), "flash": 0, "voice": 0, "campaign": 0}
+        return {
+            "eligible": len(ranked),
+            "flash": 0,
+            "voice": 0,
+            "campaign": 0,
+            "error": str(exc),
+        }
     tender.campaign_id = result.get("campaign_id")
     session.flush()
     sent = int(result.get("sent", 0))
@@ -164,10 +170,7 @@ def blast_tender(session: Session, tender: db.Tender, filters: dict) -> dict:
 
 
 def voice_module_url(tender: db.Tender) -> str:
-    base = (
-        db.get_setting("public_base_url")
-        or ""
-    ).rstrip("/")
+    base = db.public_base_url()
     return f"{base}/ivr/driver?tender={tender.id}" if base else ""
 
 
