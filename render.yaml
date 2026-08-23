@@ -34,11 +34,12 @@ services:
       # it; a wrong value means menus that play and then go nowhere.
       - key: PUBLIC_BASE_URL
         value: https://ivr-driver.onrender.com
-      # Flash calls stay simulated until Technoline allowlists this service's
-      # IP and someone flips this off deliberately.
-      - key: PBX_DRY_RUN
-        value: "0"
-      # Set PBX_LIVE=1 and PBX_DRY_RUN=0 once the IP is whitelisted.
+      # PBX_BASE_URL and PBX_API_KEY must be set in the Render dashboard.
+      # Default base URL is https://app.ipsales.co.il; set PBX_LIVE=1 to make
+      # real calls. PBX_API_KEY is required for makeCall, uploadFile, campaignRun,
+      # campaignReport and campaignStop.
+      - key: PBX_BASE_URL
+        sync: false
       - key: PBX_LIVE
         value: "1"
       - key: PBX_API_KEY

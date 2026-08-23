@@ -79,9 +79,9 @@ def _request(
 ) -> dict:
     url = f"{BASE_URL}/{endpoint}"
     body = {"action": action, **{k: v for k, v in params.items() if v is not None}}
-    # makeCall is authenticated by source-IP only; the docs say the endpoint
-    # rejects on IP, not on key, and adding an apiKey there is at best noise.
-    if API_KEY and action != "makeCall":
+    # The Technoline endpoints require apiKey for authentication; makeCall is no
+    # exception even though the docs once described it as IP-only.
+    if API_KEY:
         body.setdefault("apiKey", API_KEY)
     if DRY_RUN:
         redacted = {k: ("***" if k == "apiKey" else v) for k, v in body.items()}
@@ -89,9 +89,9 @@ def _request(
         return {"status": "OK", "dry_run": True}
     try:
         if json_body:
-            response = httpx.post(url, json=body, timeout=TIMEOUT_S)
+            response = httpx.post(url, json=body, timeout=TIMEOUT_S, follow_redirects=True)
         else:
-            response = httpx.post(url, data=body, timeout=TIMEOUT_S)
+            response = httpx.post(url, data=body, timeout=TIMEOUT_S, follow_redirects=True)
         response.raise_for_status()
         payload = response.json()
     except (httpx.HTTPError, ValueError) as exc:

@@ -134,13 +134,13 @@ start → rating_prompt (1-5) → record_score → "תודה" → hangup
 | `GET` | `/api/calls/{pk}` | פרטי שיחה (טראנסקריפט, סטטיסטיקה) |
 | `GET/PUT/POST` | `/api/botconfig` / `/api/botconfig/reset` | קריאה, עדכון ואיפוס BotConfig |
 | `GET` | `/api/customers` | רשימת לקוחות |
-| `GET/PUT/POST` | `/api/prompt` / `/api/prompt/reset` | קריאה/עדכון/איפוס פרומפט שנוצר מ-BotConfig |
+| `GET` | `/api/prompt` | תצוגה בלבד של הפרומפט שנוצר מ-BotConfig |
 
 ### 3.3 ניהול דפדפני ישן — `app/admin.py` (prefix `/admin`)
 
 | שיטה | נתיב | מטרה |
 |---|---|---|
-| `GET/POST` | `/admin` / `/admin/prompt` | עריכת פרומפט HTML פשוט |
+| `GET` | `/admin` | דף ניהול ראשי (קישור לקונסולה) |
 | `GET/POST` | `/admin/customers` | צפייה/יצירת לקוחות |
 | `POST` | `/admin/customers/{id}/delete` | מחיקת לקוח |
 | `GET` | `/admin/calls` | רשימת שיחות |
@@ -167,7 +167,9 @@ start → rating_prompt (1-5) → record_score → "תודה" → hangup
 
 ### 3.5 קריאות החוצה ל-PBX (Technoline Interaction API)
 
-השרת שלנו קורא לכתובות האלה. לכולן נדרש `PBX_API_KEY` ו-IP whitelist:
+השרת שלנו קורא לכתובות האלה. לכל האנדפוינטים נדרש `PBX_API_KEY`; מעבר לכך
+גם `makeCall` ו־`campaignRun` צריכים IP whitelist של Technoline. הכתובת הבסיסית
+נשלטת על ידי `PBX_BASE_URL` (ברירת מחדל `https://app.ipsales.co.il`):
 
 ```text
 https://app.ipsales.co.il/ivrFilesApi.php?action=makeCall&phone=...&cid=...&apiKey=...
@@ -242,7 +244,7 @@ https://app.ipsales.co.il/ivrFilesApi.php
 
 ### 6.1 פערי תשתית / הגדרות (לא קוד, חייבים לסגור מיד)
 
-1. **מפתח PBX ו-IP whitelist** — `PBX_API_KEY` לא מוגדר ב-Render, וכתובת ה-IP היוצאת של השרת עדיין לא ברשימת ה-whitelist של Technoline. בפועל `pbx.DRY_RUN=True` ושום צינתוק/קמפיין אמיתי לא יוצא.
+1. **PBX live mode ו-IP whitelist** — `PBX_LIVE` ו־`PBX_API_KEY` לא מוגדרים ב-Render, וכתובת ה-IP היוצאת של השרת עדיין לא ברשימת ה-whitelist של Technoline. בפועל `pbx.DRY_RUN=True` ושום צינתוק/קמפיין אמיתי לא יוצא.
 2. **כתובת IP קבועה ב-Render** — ללא proxy/static IP, כתובת ה-outbound משתנה. יש כבר `/outbound-ip` לבדיקה, אבל עדיין צריך לבחור פתרון (Static IP Relay / Fixie / Render Static Outbound IP).
 3. **`GEMINI_API_KEY`** — אם רוצים שיחות AI חיות, המפתח צריך להיות בסביבה.
 4. **`ADMIN_TOKEN`** — הקונסולה וה-ops API פתוחים אם לא מוגדר.

@@ -2,7 +2,7 @@
 
 Run from the project root after generating the files:
 
-    PBX_DRY_RUN=0 PBX_API_KEY=your_key PBX_BASE_URL=https://app.ipsales.co.il \
+    PBX_LIVE=1 PBX_API_KEY=your_key PBX_BASE_URL=https://app.ipsales.co.il \
         python tools/upload_audio_to_pbx.py
 
 If PBX_API_KEY is missing, the script aborts.
@@ -31,7 +31,7 @@ def main() -> None:
         try:
             result = pbx.upload_file(name, path.read_bytes())
             if result.get("dry_run"):
-                print(f"{name}: dry run (set PBX_DRY_RUN=0 to really upload)")
+                print(f"{name}: dry run (set PBX_API_KEY and PBX_LIVE=1 to really upload)")
             else:
                 print(f"{name}: uploaded -> {result.get('status')}")
         except Exception as exc:

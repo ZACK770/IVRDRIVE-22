@@ -156,7 +156,8 @@ dispatch.open_tender() → בחירת נהגים זכאים → pbx.flash_call()
 - `PUBLIC_BASE_URL` — כתובת שבה ה-PBX מגיע למודולים שלנו (`/ivr/*`).
 - `GEMINI_API_KEY`, `GEMINI_LIVE_MODEL` — הבוט.
 - `PBX_BASE_URL`, `PBX_API_KEY` — קריאות ל-Technoline Interaction API.
-- `PBX_DRY_RUN=1` — במצב פיתוח, לא מבצע צינתוקים אמיתיים.
+- `PBX_LIVE=1` — מבצע צינתוקים אמיתיים ל-PBX (רק אחרי IP whitelist ועם `PBX_API_KEY`).
+- `PBX_API_KEY` — מפתח API ל־Technoline (נדרש לכל האנדפוינטים, כולל `makeCall`).
 - `ADMIN_TOKEN` — אימות קונסולה ו-ops API.
 
 ---

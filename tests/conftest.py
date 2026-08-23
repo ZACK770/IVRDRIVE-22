@@ -1,8 +1,9 @@
 """Test wiring.
 
-The database URL and the PBX dry-run flag are read at import time by
-``app.db`` and ``app.pbx``, so they are set here — before any application
-module is imported — rather than in a fixture.
+The database URL is read at import time by ``app.db``, so it is set here
+— before any application module is imported — rather than in a fixture.
+``app.pbx`` defaults to dry-run when neither ``PBX_LIVE`` nor ``PBX_API_KEY``
+are set, which is the desired test behaviour.
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ import pytest
 
 _TMP = Path(tempfile.mkdtemp(prefix="ivrdrive-tests-"))
 os.environ["BOT_DB_URL"] = f"sqlite:///{_TMP / 'test.db'}"
-os.environ["PBX_DRY_RUN"] = "1"
 os.environ["SCHEDULER_ENABLED"] = "0"
 os.environ["CAPTURE_DIR"] = str(_TMP / "captures")
 
