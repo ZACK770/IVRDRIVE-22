@@ -15,7 +15,6 @@ const LABELS: Record<string, string> = {
   commission_rate: "שיעור עמלה",
   public_base_url: "כתובת ציבורית למרכזייה",
   auto_tender: "פתיחת מכרז אוטומטית (1/0)",
-  representative_extension: "מספר נציג להעברת שיחה",
 };
 
 export function Settings() {

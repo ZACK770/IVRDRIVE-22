@@ -442,14 +442,12 @@ export function Drivers() {
 export function Areas() {
   const load = useCallback(() => api.areas(), []);
   const { data, error, refresh } = usePoll<Area[]>(load, 60);
-  const [form, setForm] = useState({ name: "", callback_number: "", flash_cid: "" });
+  const [form, setForm] = useState({ name: "", callback_number: "" });
 
   const errors = useMemo(() => {
     const list: string[] = [];
     if (!form.name.trim()) list.push("שם אזור חובה");
     if (!form.callback_number.trim()) list.push("מספר לחיוג חוזר חובה");
-    if (form.flash_cid.trim() && form.flash_cid.trim().length !== 6)
-      list.push("מזהה מתקשר חייב להיות 6 ספרות");
     return list;
   }, [form]);
 
@@ -458,7 +456,7 @@ export function Areas() {
     api
       .saveArea(form)
       .then(() => {
-        setForm({ name: "", callback_number: "", flash_cid: "" });
+        setForm({ name: "", callback_number: "" });
         refresh();
       })
       .catch(() => {});
@@ -482,7 +480,6 @@ export function Areas() {
             <tr key={area.id}>
               <td data-label="אזור">{area.name}</td>
               <td data-label="מספר לחיוג חוזר">{area.callback_number ?? "—"}</td>
-              <td data-label="מזהה מתקשר">{area.flash_cid ?? "—"}</td>
               <td data-label="פעיל">{area.active ? "כן" : "לא"}</td>
             </tr>
           ))}
@@ -498,11 +495,6 @@ export function Areas() {
           placeholder="מספר לחיוג חוזר"
           value={form.callback_number}
           onChange={(e) => setForm({ ...form, callback_number: e.target.value })}
-        />
-        <input
-          placeholder="מזהה מתקשר לצינתוק (6 ספרות)"
-          value={form.flash_cid}
-          onChange={(e) => setForm({ ...form, flash_cid: e.target.value })}
         />
         <button className="action" onClick={save} disabled={errors.length > 0}>
           שמור אזור

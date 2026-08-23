@@ -137,56 +137,30 @@ def open_tender(
 
 
 def blast_tender(session: Session, tender: db.Tender, filters: dict) -> dict:
-    """Ring everyone eligible. Flash calls for most, a spoken campaign for the
-    drivers who pay for one; a driver never gets both."""
+    """Reach every eligible driver through one return-call-capable campaign."""
     ranked = drivers.candidates(session, tender.area, filters)
-    area_row = session.scalars(
-        select(db.Area).where(db.Area.name == (tender.area or ""))
-    ).first()
-    cid = area_row.flash_cid if area_row and area_row.flash_cid else pbx.new_cid(tender.id)
-
-    flash_targets = [d for d, _ in ranked if not d.voice_offers]
-    voice_targets = [d for d, _ in ranked if d.voice_offers]
-
-    sent = 0
-    for driver in flash_targets:
-        result = pbx.flash_call(
+    targets = [(driver.id, driver.phone) for driver, _ in ranked]
+    try:
+        result = pbx.campaign_broadcast(
             session,
-            driver.phone,
-            cid=cid,
-            driver_id=driver.id,
+            targets,
             tender_id=tender.id,
-            kind="tender",
+            name=f"tender-{tender.id}",
+            module_url=voice_module_url(tender),
         )
-        sent += 1 if result["sent"] else 0
-
-    voice_sent = 0
-    if voice_targets:
-        try:
-            result = pbx.voice_broadcast(
-                [d.phone for d in voice_targets],
-                name=f"tender-{tender.id}",
-                module_url=voice_module_url(tender),
-            )
-            voice_sent = len(voice_targets)
-            tender.campaign_id = result.get("campaign_id")
-            session.flush()
-        except pbx.PbxError as exc:
-            # A campaign that will not start must not leave the drivers who
-            # paid for it worse off than the ones who did not.
-            log.warning("voice broadcast for tender %s failed: %s", tender.id, exc)
-            for driver in voice_targets:
-                result = pbx.flash_call(
-                    session,
-                    driver.phone,
-                    cid=cid,
-                    driver_id=driver.id,
-                    tender_id=tender.id,
-                    kind="tender",
-                )
-                sent += 1 if result["sent"] else 0
-
-    return {"eligible": len(ranked), "flash": sent, "voice": voice_sent}
+    except pbx.PbxError as exc:
+        log.warning("campaign for tender %s failed: %s", tender.id, exc)
+        return {"eligible": len(ranked), "flash": 0, "voice": 0, "campaign": 0}
+    tender.campaign_id = result.get("campaign_id")
+    session.flush()
+    sent = int(result.get("sent", 0))
+    return {
+        "eligible": len(ranked),
+        "flash": 0,
+        "voice": sent,
+        "campaign": sent,
+        "campaign_id": result.get("campaign_id"),
+    }
 
 
 def voice_module_url(tender: db.Tender) -> str:
@@ -440,5 +414,4 @@ def finish_ride(session: Session, order: db.Order, *, area: str | None = None) -
     awarded = loyalty.award_for_order(session, order)
     rating = ratings.schedule_for_order(session, order)
     return {"order_id": order.id, "points": awarded, "rating": rating}
-
 

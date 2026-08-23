@@ -157,7 +157,14 @@ def driver_flash(driver_id: int, actor: Actor) -> dict:
         driver = session.get(db.Driver, driver_id)
         if driver is None:
             raise HTTPException(status_code=404, detail="no such driver")
-        result = pbx.flash_call(session, driver.phone, driver_id=driver.id, kind="manual")
+        base_url = (db.get_setting("public_base_url") or "").rstrip("/")
+        result = pbx.campaign_broadcast(
+            session,
+            [(driver.id, driver.phone)],
+            tender_id=None,
+            name=f"manual-driver-{driver.id}",
+            module_url=f"{base_url}/ivr/driver" if base_url else "",
+        )
         db.log_action(
             session,
             "flash_manual",
@@ -773,7 +780,9 @@ def list_logs(limit: int = 200, action: str | None = None) -> dict:
 def get_settings() -> dict:
     with db.session_scope() as session:
         stored = {row.key: row.value for row in session.scalars(select(db.Setting)).all()}
-    return {"settings": {**db.DEFAULT_SETTINGS, **stored}}
+    values = {**db.DEFAULT_SETTINGS, **stored}
+    values.pop("representative_extension", None)
+    return {"settings": values}
 
 
 @router.put("/settings")

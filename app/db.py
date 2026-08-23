@@ -981,7 +981,6 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "auto_tender": "1",
     #: Stop a paid voice campaign once this many calls have been answered.
     "voice_campaign_stop_answered": "30",
-    "representative_extension": "0527180504",
 }
 
 

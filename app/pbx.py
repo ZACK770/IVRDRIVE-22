@@ -249,10 +249,10 @@ def connect_call(
 def voice_broadcast(
     phones: list[str], *, name: str, module_url: str | None = None
 ) -> dict:
-    """The paid alternative to a flash call: the driver's phone is answered by
-    the PBX calling our Module API endpoint, where we return a TTS offer and
-    a keypress is captured. This uses the documented `messagesType=apiUrl`
-    model and avoids pre-generated MP3 files.
+    """Start a paid outbound campaign that can receive return calls.
+
+    Unlike ``makeCall``, this is a normal campaign call: the PBX presents its
+    configured campaign caller ID and the driver can call that number back.
     """
     if not phones:
         return {"started": False, "note": "אין נמענים"}
@@ -268,6 +268,64 @@ def voice_broadcast(
         params["apiUrl"] = module_url
     payload = _request("campaignRun", params, endpoint="campaignApi.php", json_body=True)
     return {"started": True, "campaign_id": payload.get("campaignId"), "response": payload}
+
+
+def campaign_broadcast(
+    session: Session,
+    targets: list[tuple[int, str]],
+    *,
+    tender_id: int | None,
+    name: str,
+    module_url: str,
+) -> dict:
+    """Broadcast one tender campaign and record each recipient in the ledger."""
+    pending = [
+        (driver_id, db.normalize_phone(phone))
+        for driver_id, phone in targets
+        if not recently_called(session, phone)
+    ]
+    if not pending:
+        return {"started": False, "sent": 0, "status": "debounced"}
+
+    try:
+        result = voice_broadcast(
+            [phone for _, phone in pending],
+            name=name,
+            module_url=module_url,
+        )
+    except PbxError as exc:
+        for driver_id, phone in pending:
+            session.add(
+                db.FlashCall(
+                    phone=phone,
+                    driver_id=driver_id,
+                    tender_id=tender_id,
+                    kind="campaign",
+                    status="failed",
+                    note=str(exc),
+                )
+            )
+        raise
+
+    campaign_id = result.get("campaign_id")
+    status = "dry_run" if result.get("response", {}).get("dry_run") else "sent"
+    for driver_id, phone in pending:
+        session.add(
+            db.FlashCall(
+                phone=phone,
+                driver_id=driver_id,
+                tender_id=tender_id,
+                kind="campaign",
+                status=status,
+                note=f"campaign {campaign_id}" if campaign_id else None,
+            )
+        )
+    return {
+        "started": True,
+        "sent": len(pending),
+        "campaign_id": campaign_id,
+        "status": status,
+    }
 
 
 def campaign_report(campaign_id: str) -> dict:

@@ -326,7 +326,13 @@ export const api = {
   openTender: (
     orderId: number,
     body: { area?: string; filters?: TenderFilters; window_seconds?: number },
-  ) => write<{ eligible: number; flash: number; voice: number }>(`/api/orders/${orderId}/tender`, body),
+  ) => write<{
+    eligible: number;
+    flash: number;
+    voice: number;
+    campaign?: number;
+    campaign_id?: string | null;
+  }>(`/api/orders/${orderId}/tender`, body),
   tenders: () => request<{ tenders: Tender[] }>("/api/tenders").then((r) => r.tenders),
   tender: (id: number) => request<{
     tender: Tender;
