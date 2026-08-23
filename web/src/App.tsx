@@ -4,6 +4,7 @@ import { BotConfig } from "./BotConfig";
 import { Club } from "./Club";
 import { AreaBoard, Tenders } from "./Dispatch";
 import { Drivers } from "./Drivers";
+import { DriverRegistration } from "./DriverRegistration";
 import { Live } from "./Live";
 import { Settings } from "./Settings";
 import { ToastProvider, useToast } from "./ui";
@@ -22,6 +23,7 @@ import {
 import "./styles.css";
 
 const TABS = {
+  driverRegistration: "רישום נהג",
   live: "לייב",
   board: "לוח סדרן",
   areas: "נהגים באזור",
@@ -424,6 +426,7 @@ function Customers() {
 }
 
 const VIEWS: Record<Tab, () => ReactElement> = {
+  driverRegistration: DriverRegistration,
   live: Live,
   board: Board,
   areas: AreaBoard,
