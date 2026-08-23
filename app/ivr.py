@@ -286,8 +286,14 @@ def _session_row(session: Session, call_id: str, caller: str) -> db.IvrSession:
         return row
     # Some extensions report no call id, so the row is keyed by the caller and
     # outlives the call. A finished or stale row therefore means a new call,
-    # not a caller stuck at the end of the previous one.
-    if row.step == "done" or row.updated_at < datetime.utcnow() - STALE_CALL:
+    # not a caller stuck at the end of the previous one. A row finished only
+    # seconds ago is still the same call — the PBX reporting the outcome of a
+    # routing attempt, for example — so it must stay "done" and be hung up,
+    # not restarted into a redial loop.
+    finished_grace = timedelta(seconds=30)
+    if (row.step == "done" and row.updated_at < datetime.utcnow() - finished_grace) or (
+        row.updated_at < datetime.utcnow() - STALE_CALL
+    ):
         row.step = "start"
         row.data = "{}"
     return row
