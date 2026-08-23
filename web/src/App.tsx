@@ -439,6 +439,7 @@ const VIEWS: Record<Tab, () => ReactElement> = {
   accounting: Accounting,
   calls: Calls,
   botconfig: BotConfig,
+  customers: Customers,
   settings: Settings,
 };
 
