@@ -309,6 +309,44 @@ textarea {
   padding: 1.25rem;
 }
 
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(5, 8, 15, 0.72);
+}
+
+.drawer {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  width: min(720px, 94vw);
+  overflow: auto;
+  background: var(--panel);
+  border-inline-start: 1px solid var(--line);
+  box-shadow: -20px 0 70px rgba(0, 0, 0, 0.45);
+}
+
+.drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.drawer-head h2 {
+  margin: 0;
+}
+
+.drawer-body {
+  padding: 1.25rem;
+}
+
 .modal-x {
   border: 0;
   background: transparent;

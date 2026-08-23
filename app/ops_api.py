@@ -61,7 +61,18 @@ def list_drivers(status: str | None = None) -> dict:
         if status:
             stmt = stmt.where(db.Driver.status == status)
         rows = session.scalars(stmt).all()
-        return {"drivers": [drivers.to_json(session, d) for d in rows]}
+        area_rows = session.execute(
+            select(db.DriverArea.driver_id, db.DriverArea.area)
+        ).all()
+        areas_by_driver: dict[int, list[str]] = {}
+        for driver_id, area in area_rows:
+            areas_by_driver.setdefault(driver_id, []).append(area)
+        return {
+            "drivers": [
+                drivers.to_json(session, d, areas_by_driver.get(d.id, []))
+                for d in rows
+            ]
+        }
 
 
 def _save_driver(session: Session, phone: str, payload: dict, actor: str) -> dict:

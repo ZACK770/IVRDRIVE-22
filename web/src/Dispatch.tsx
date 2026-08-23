@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { api, type BoardArea, type Tender, type TenderFilters } from "./api";
 import { clock, usePoll } from "./usePoll";
-import { Confirm, Modal, useToast } from "./ui";
+import { Confirm, Drawer as Modal, useToast } from "./ui";
 
 const TENDER_STATUS: Record<string, string> = {
   open: "פתוח",

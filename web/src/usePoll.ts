@@ -5,14 +5,17 @@ import { useCallback, useEffect, useState } from "react";
 export function usePoll<T>(load: () => Promise<T>, seconds: number) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(() => {
+    setLoading(true);
     load()
       .then((value) => {
         setData(value);
         setError("");
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }, [load]);
 
   useEffect(() => {
@@ -21,7 +24,7 @@ export function usePoll<T>(load: () => Promise<T>, seconds: number) {
     return () => clearInterval(timer);
   }, [refresh, seconds]);
 
-  return { data, error, refresh };
+  return { data, error, loading, refresh };
 }
 
 /** The API sends naive UTC timestamps; without the Z they would be read as

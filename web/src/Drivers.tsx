@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { api, type Area, type Driver } from "./api";
+import { Drawer } from "./ui";
 import { clock, usePoll } from "./usePoll";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -94,6 +95,7 @@ function DriverForm({
   const [areasText, setAreasText] = useState((driver.areas ?? []).join(", "));
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [saving, setSaving] = useState(false);
   const chosen = useMemo(() => parseAreas(areasText), [areasText]);
 
   const toggleArea = (name: string) =>
@@ -109,7 +111,8 @@ function DriverForm({
   const numeric = (key: keyof Driver, value: string) =>
     field(key, value === "" ? null : Number(value));
 
-  const submit = () => {
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError("");
     setSuccess("");
     const payload = { ...form, areas: chosen };
@@ -118,20 +121,22 @@ function DriverForm({
       setError(message);
       return;
     }
+    setSaving(true);
     api
       .saveDriver(payload)
       .then(() => {
         setSuccess("הנהג נשמר בהצלחה");
         setTimeout(onDone, 900);
       })
-      .catch((err: Error) => setError(err.message));
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setSaving(false));
   };
 
   const isNew = !form.id;
   const currentStatus = form.status ?? "pending";
 
   return (
-    <div className="panel">
+    <form className="panel" onSubmit={submit}>
       <h2>
         {isNew ? "נהג חדש" : `עריכת נהג ${form.phone}`}
         {!isNew && (
@@ -303,18 +308,18 @@ function DriverForm({
         ))}
       </datalist>
       <div className="row">
-        <button className="action" onClick={submit}>
+        <button className="action" type="submit" disabled={saving}>
           שמור
         </button>
         <button onClick={onDone}>ביטול</button>
       </div>
-    </div>
+    </form>
   );
 }
 
 export function Drivers() {
   const load = useCallback(() => api.drivers(), []);
-  const { data, error, refresh } = usePoll<Driver[]>(load, 20);
+  const { data, error, loading, refresh } = usePoll<Driver[]>(load, 20);
   const areas = usePoll<Area[]>(
     useCallback(() => api.areas(), []),
     60,
@@ -347,15 +352,21 @@ export function Drivers() {
           נהג חדש
         </button>
       </div>
+      {loading && <p className="muted">טוען נהגים...</p>}
       {editing && (
-        <DriverForm
-          driver={editing}
-          areaNames={areaNames}
-          onDone={() => {
-            setEditing(null);
-            refresh();
-          }}
-        />
+        <Drawer
+          title={editing.id ? `פרטי נהג ${editing.phone}` : "נהג חדש"}
+          onClose={() => setEditing(null)}
+        >
+          <DriverForm
+            driver={editing}
+            areaNames={areaNames}
+            onDone={() => {
+              setEditing(null);
+              refresh();
+            }}
+          />
+        </Drawer>
       )}
       <table>
         <thead>
@@ -424,12 +435,11 @@ export function Drivers() {
           ))}
         </tbody>
       </table>
-      <Areas />
     </>
   );
 }
 
-function Areas() {
+export function Areas() {
   const load = useCallback(() => api.areas(), []);
   const { data, error, refresh } = usePoll<Area[]>(load, 60);
   const [form, setForm] = useState({ name: "", callback_number: "", flash_cid: "" });

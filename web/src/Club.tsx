@@ -7,6 +7,7 @@ import {
   type Referral,
 } from "./api";
 import { clock, usePoll } from "./usePoll";
+import { Drawer } from "./ui";
 
 const REFERRAL_STATUS: Record<string, string> = {
   pending: "ממתין לאישור",
@@ -167,11 +168,27 @@ export function Club() {
   const { data, error } = usePoll<ClubMember[]>(load, 30);
   const [open, setOpen] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"members" | "referrals" | "ratings">("members");
 
   return (
     <>
       <h1>מועדון נוסעים</h1>
-      {error && <div className="error">{error}</div>}
+      <div className="row">
+        <button className={view === "members" ? "action" : ""} onClick={() => setView("members")}>
+          נוסעים
+        </button>
+        <button className={view === "referrals" ? "action" : ""} onClick={() => setView("referrals")}>
+          הפניות
+        </button>
+        <button className={view === "ratings" ? "action" : ""} onClick={() => setView("ratings")}>
+          שיחות דירוג
+        </button>
+      </div>
+      {view === "referrals" && <Referrals />}
+      {view === "ratings" && <Ratings />}
+      {error && view === "members" && <div className="error">{error}</div>}
+      {view === "members" && (
+      <>
       <div className="row">
         <input
           placeholder="חיפוש לפי טלפון"
@@ -182,7 +199,11 @@ export function Club() {
           פתח כרטיס
         </button>
       </div>
-      {open && <Member phone={open} onClose={() => setOpen(null)} />}
+      {open && (
+        <Drawer title={`פרטי נוסע ${open}`} onClose={() => setOpen(null)}>
+          <Member phone={open} onClose={() => setOpen(null)} />
+        </Drawer>
+      )}
       <table>
         <thead>
           <tr>
@@ -211,13 +232,13 @@ export function Club() {
             ))}
         </tbody>
       </table>
-      <Referrals />
-      <Ratings />
+      </>
+      )}
     </>
   );
 }
 
-function Referrals() {
+export function Referrals() {
   const load = useCallback(() => api.referrals(), []);
   const { data, error, refresh } = usePoll<Referral[]>(load, 30);
   const [form, setForm] = useState({ referrer: "", invited: "", flash: true });
@@ -290,7 +311,7 @@ function Referrals() {
   );
 }
 
-function Ratings() {
+export function Ratings() {
   const load = useCallback(() => api.ratings(), []);
   const { data, error, refresh } = usePoll<RatingRequest[]>(load, 20);
 

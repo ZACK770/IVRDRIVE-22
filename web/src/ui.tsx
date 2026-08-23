@@ -105,6 +105,43 @@ export function Modal({
   );
 }
 
+export function Drawer({
+  title,
+  onClose,
+  children,
+  wide: _wide,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="drawer-backdrop"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <aside className="drawer" dir="rtl">
+        <div className="drawer-head">
+          <h2>{title}</h2>
+          <button className="modal-x" onClick={onClose} aria-label="סגירה">
+            ×
+          </button>
+        </div>
+        <div className="drawer-body">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------- confirm */
 
 export function Confirm({

@@ -4,10 +4,9 @@ import { BotConfig } from "./BotConfig";
 import { Club } from "./Club";
 import { AreaBoard, Tenders } from "./Dispatch";
 import { Drivers } from "./Drivers";
-import { DriverRegistration } from "./DriverRegistration";
 import { Live } from "./Live";
 import { Settings } from "./Settings";
-import { ToastProvider, useToast } from "./ui";
+import { Drawer, ToastProvider, useToast } from "./ui";
 import { clock, usePoll } from "./usePoll";
 import {
   actorStore,
@@ -23,7 +22,6 @@ import {
 import "./styles.css";
 
 const TABS = {
-  driverRegistration: "רישום נהג",
   live: "לייב",
   board: "לוח סדרן",
   areas: "נהגים באזור",
@@ -337,6 +335,7 @@ function Calls() {
   const load = useCallback(() => api.calls(), []);
   const { data, error } = usePoll<Call[]>(load, 15);
   const [open, setOpen] = useState<CallDetail | null>(null);
+  const toast = useToast();
 
   const total = (data ?? []).reduce((sum, call) => sum + call.cost_ils, 0);
 
@@ -370,7 +369,12 @@ function Calls() {
               <td>
                 <button
                   className="action"
-                  onClick={() => api.call(call.id).then(setOpen)}
+                  onClick={() =>
+                    api
+                      .call(call.id)
+                      .then(setOpen)
+                      .catch((err: Error) => toast.error(err.message))
+                  }
                 >
                   תמליל
                 </button>
@@ -380,7 +384,7 @@ function Calls() {
         </tbody>
       </table>
       {open && (
-        <>
+        <Drawer title={`שיחה ${open.call_id}`} onClose={() => setOpen(null)}>
           <h1>שיחה {open.call_id}</h1>
           <p className="muted">
             תורים: {open.stats.turns ?? 0} · קטיעות: {open.stats.interruptions ?? 0} · זמני
@@ -388,13 +392,13 @@ function Calls() {
             {(open.stats.usage?.cost_usd ?? 0).toFixed(4)}
           </p>
           <pre>{open.transcript ?? "אין תמליל"}</pre>
-        </>
+        </Drawer>
       )}
     </>
   );
 }
 
-function Customers() {
+export function Customers() {
   const load = useCallback(() => api.customers(), []);
   const { data, error } = usePoll<Customer[]>(load, 60);
   return (
@@ -426,7 +430,6 @@ function Customers() {
 }
 
 const VIEWS: Record<Tab, () => ReactElement> = {
-  driverRegistration: DriverRegistration,
   live: Live,
   board: Board,
   areas: AreaBoard,
@@ -436,7 +439,6 @@ const VIEWS: Record<Tab, () => ReactElement> = {
   accounting: Accounting,
   calls: Calls,
   botconfig: BotConfig,
-  customers: Customers,
   settings: Settings,
 };
 

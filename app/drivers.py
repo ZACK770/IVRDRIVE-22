@@ -403,14 +403,18 @@ def area_board(session: Session, *, now: datetime | None = None) -> list[dict]:
     ]
 
 
-def to_json(session: Session, driver: db.Driver) -> dict:
+def to_json(
+    session: Session,
+    driver: db.Driver,
+    areas: list[str] | None = None,
+) -> dict:
     key, label = tier_of(driver)
     return {
         "id": driver.id,
         "phone": driver.phone,
         "name": driver.name,
         "home_area": driver.home_area,
-        "areas": areas_of(session, driver),
+        "areas": areas if areas is not None else areas_of(session, driver),
         "car_model": driver.car_model,
         "car_year": driver.car_year,
         "seats": driver.seats,
