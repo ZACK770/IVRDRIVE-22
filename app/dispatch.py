@@ -222,7 +222,12 @@ def latest_tender_for_driver(session: Session, driver: db.Driver) -> db.Tender |
         tender = session.get(db.Tender, flash.tender_id)
         if tender is not None and tender.status == STATUS_OPEN:
             return tender
-    return open_tender_for_area(session, driver.last_area or driver.home_area)
+    tender = open_tender_for_area(session, driver.last_area or driver.home_area)
+    if tender is not None:
+        return tender
+    # A driver who bothered to call in should hear whatever is open, even
+    # outside their declared area — the flash CID already did the filtering.
+    return open_tender_for_area(session, None)
 
 
 def place_bid(session: Session, tender: db.Tender, driver: db.Driver) -> dict:
