@@ -440,6 +440,41 @@ textarea {
   margin: 0 auto;
 }
 
+.live-screen {
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.live-screen > h1 {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  letter-spacing: -0.02em;
+}
+
+.live-screen > h2 {
+  margin-top: 1.75rem;
+  font-size: 0.95rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+}
+
+.live-screen .panel {
+  border-radius: 16px;
+  background: linear-gradient(145deg, var(--panel), #141b2b);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.18);
+}
+
+.live-screen .live-tender {
+  border-inline-start: 3px solid var(--ok);
+}
+
+.live-screen table {
+  border-radius: 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+}
+
 .page-heading {
   display: flex;
   align-items: flex-start;

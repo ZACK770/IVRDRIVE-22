@@ -97,7 +97,7 @@ export function Live() {
   const active = (orders.data ?? []).filter((o) => o.status === "assigned" || o.status === "on_route");
 
   return (
-    <>
+    <section className="live-screen">
       <h1>
         לייב
         <span className="live-dot" title="מתעדכן כל 2 שניות" />
@@ -184,6 +184,6 @@ export function Live() {
           ))}
         </tbody>
       </table>
-    </>
+    </section>
   );
 }
