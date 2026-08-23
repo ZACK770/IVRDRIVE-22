@@ -108,7 +108,7 @@ class CallBridge:
                 return
             self._cap.record("out", "binary", frame)
 
-    async def _drain_and_close(self, *, delay_s: float = 0.3) -> None:
+    async def _drain_and_close(self, *, delay_s: float = 1.5) -> None:
         """Give the final audio frames time to reach the PBX before closing."""
         deadline = time.monotonic() + delay_s
         while time.monotonic() < deadline and self._out:
