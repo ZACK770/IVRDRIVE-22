@@ -40,6 +40,23 @@ STATUS_FAILED = "failed"
 STATUS_CANCELLED = "cancelled"
 
 
+def _tender_window(notified: int) -> int:
+    """Pick the bidding window based on how many drivers were flashed.
+
+    - 0 notified drivers: keep the window open longer so a manual callback
+      can still win the ride.
+    - Fewer than the fast threshold: standard window.
+    - At or above the fast threshold: close fast because enough drivers are
+      already competing.
+    """
+    if notified == 0:
+        return db.setting_int("tender_window_empty_seconds") or db.setting_int("tender_window_seconds") or 10
+    threshold = db.setting_int("tender_window_fast_threshold") or 10
+    if notified >= threshold:
+        return db.setting_int("tender_window_fast_seconds") or db.setting_int("tender_window_seconds") or 10
+    return db.setting_int("tender_window_few_seconds") or db.setting_int("tender_window_seconds") or 10
+
+
 def open_tender(
     session: Session,
     order: db.Order,
@@ -52,7 +69,7 @@ def open_tender(
 ) -> dict:
     """Open the bidding on one order and ring the drivers who qualify."""
     area = area or order.area or order.origin
-    window = window_seconds or db.setting_int("tender_window_seconds") or 10
+    base_window = db.setting_int("tender_window_seconds") or 10
     now = datetime.utcnow()
 
     existing = session.scalars(
@@ -68,7 +85,7 @@ def open_tender(
         area=area,
         status=STATUS_OPEN,
         opened_at=now,
-        closes_at=now + timedelta(seconds=window),
+        closes_at=now + timedelta(seconds=base_window),
         filters_json=json.dumps(filters or {}, ensure_ascii=False),
     )
     session.add(tender)
@@ -77,13 +94,21 @@ def open_tender(
 
     notified = blast_tender(session, tender, filters or {}) if blast else {"flash": 0, "voice": 0}
     tender.notified = int(notified.get("flash", 0)) + int(notified.get("voice", 0))
+
+    # A dispatcher-supplied window overrides the dynamic calculation.
+    if window_seconds is not None:
+        window = window_seconds
+    else:
+        window = _tender_window(tender.notified)
+    tender.closes_at = now + timedelta(seconds=window)
+
     db.log_action(
         session,
         "tender_opened",
         actor=actor,
         entity="tender",
         entity_id=tender.id,
-        detail=f"order {order.id} area {area} notified {tender.notified}",
+        detail=f"order {order.id} area {area} notified {tender.notified} window {window}s",
     )
     return {
         "ok": True,

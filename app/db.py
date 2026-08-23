@@ -957,6 +957,14 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "referral_credit_days": "30",
     #: Bidding window, in seconds, before the algorithm picks a winner.
     "tender_window_seconds": "10",
+    #: If this many drivers (or more) were flashed, close the window fast.
+    "tender_window_fast_threshold": "10",
+    #: Fast window for many drivers (seconds).
+    "tender_window_fast_seconds": "20",
+    #: Window when some, but fewer than the fast threshold, drivers were flashed.
+    "tender_window_few_seconds": "30",
+    #: Window when no drivers were flashed, giving time for manual callbacks.
+    "tender_window_empty_seconds": "120",
     #: A location report older than this stops counting as "in the area".
     "location_fresh_hours": "10",
     #: Delay between a finished ride and the rating call.
