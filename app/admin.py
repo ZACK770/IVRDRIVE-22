@@ -52,7 +52,7 @@ _PAGE = """<!doctype html>
  td,th{{border:1px solid #ddd;padding:.4rem .6rem;text-align:right}}
  nav a{{margin-left:1rem}} button{{padding:.4rem 1rem;font-size:1rem}}
 </style></head><body>
-<nav><a href="/admin">פרומפט</a>
+<nav><a href="/admin">ראשי</a>
 <a href="/admin/customers">לקוחות</a><a href="/admin/orders">הזמנות</a>
 <a href="/admin/calls">שיחות</a><a href="/">דיבאג</a></nav>
 <h1>{title}</h1>
@@ -65,21 +65,11 @@ def _page(title: str, body: str) -> HTMLResponse:
 
 
 @router.get("", response_class=HTMLResponse)
-def prompt_form() -> HTMLResponse:
-    content = escape(db.get_prompt("system"))
+def admin_index() -> HTMLResponse:
     return _page(
-        "עריכת פרומפט",
-        f"""<form method="post" action="/admin/prompt">
-        <textarea name="content">{content}</textarea>
-        <p><button type="submit">שמור</button>
-        השינוי נכנס לתוקף בשיחה הבאה.</p></form>""",
+        "ניהול",
+        "<p>הגדרות הבוט נערכות דרך <a href='/'>הקונסולה הראשית</a>.</p>",
     )
-
-
-@router.post("/prompt")
-def prompt_save(content: str = Form(...)) -> RedirectResponse:
-    db.set_prompt("system", content)
-    return RedirectResponse("/admin", status_code=303)
 
 
 @router.get("/customers", response_class=HTMLResponse)

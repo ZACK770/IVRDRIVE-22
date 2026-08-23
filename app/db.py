@@ -424,6 +424,16 @@ def botconfig_to_prompt(config: dict) -> str:
     questionnaire = config.get("questionnaire", [])
     q_and_a = config.get("q_and_a", [])
 
+    if knowledge and len(knowledge) <= 500:
+        knowledge_text = knowledge
+    else:
+        lines = knowledge.count("\n") + 1 if knowledge and knowledge.strip() else 0
+        knowledge_text = (
+            "מחירים וכללים עסקיים נמצאים ב-BotConfig. "
+            f"({lines} שורות זמינות לכלי lookup_price). "
+            "כשצריך מחיר — קרא לכלי lookup_price בלבד. אין לנחש מחירים."
+        )
+
     parts = [
         identity,
         "",
@@ -434,7 +444,7 @@ def botconfig_to_prompt(config: dict) -> str:
         guidelines,
         "",
         "מידע / ידע לנציג (מקור האמת, במיוחד מחירים):",
-        knowledge,
+        knowledge_text,
         "",
         f"שפת השיח: {language}",
         f"קול: {voice}",

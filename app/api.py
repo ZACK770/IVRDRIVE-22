@@ -213,19 +213,5 @@ def list_customers() -> dict:
 
 @router.get("/prompt")
 def get_prompt() -> dict:
-    return db.prompt_meta("system")
-
-
-@router.put("/prompt")
-def put_prompt(payload: Annotated[dict, Body()]) -> dict:
-    content = payload.get("content")
-    if not isinstance(content, str) or not content.strip():
-        raise HTTPException(status_code=422, detail="content required")
-    db.set_prompt("system", content)
-    return db.prompt_meta("system")
-
-
-@router.post("/prompt/reset")
-def reset_prompt() -> dict:
-    db.reset_prompt("system")
+    """Read-only preview of the generated prompt. Mutations go through /botconfig."""
     return db.prompt_meta("system")

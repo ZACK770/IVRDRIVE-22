@@ -421,13 +421,4 @@ export const api = {
     request<{ customers: Customer[] }>("/api/customers").then((r) => r.customers),
   prompt: () =>
     request<{ content: string; edited: boolean; default: string }>("/api/prompt"),
-  savePrompt: (content: string) =>
-    request<{ content: string; edited: boolean; default: string }>("/api/prompt", {
-      method: "PUT",
-      body: JSON.stringify({ content }),
-    }),
-  resetPrompt: () =>
-    request<{ content: string; edited: boolean; default: string }>("/api/prompt/reset", {
-      method: "POST",
-    }),
 };
