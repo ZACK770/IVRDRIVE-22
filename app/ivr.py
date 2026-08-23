@@ -329,10 +329,11 @@ async def driver_line(request: Request) -> JSONResponse:
     return JSONResponse(body)
 
 
-def _wait_module(tender: db.Tender) -> dict:
+def _wait_module(tender: db.Tender, *, again: bool = False) -> dict:
     """Hold the bidder on the line until the auction window ends."""
     remaining = int((tender.closes_at - datetime.utcnow()).total_seconds())
-    return menu("driver_wait", keys="1", tries=1, timeout=max(2, min(remaining + 1, 30)))
+    key = "driver_wait_more" if again else "driver_wait"
+    return menu(key, keys="1", tries=1, timeout=max(2, min(remaining + 1, 30)))
 
 
 def _driver_step(session: Session, params: dict[str, str]) -> dict:
@@ -356,18 +357,20 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
             return menu("driver_register", keys="1")
         if driver.status != "active":
             return message("driver_pending")
-        # A winner who was not left on hold -- a voice-campaign bidder, or one
-        # whose line dropped -- is rung back, so the callback has to hand them
-        # the ride they already won before anything else.
-        won = dispatch.awarded_order_for_driver(session, driver)
-        if won is not None and won.phone:
-            _save(row, "done", state)
-            return route(won.phone)
         tender = None
         if params.get("tender"):
             tender = session.get(db.Tender, int(params["tender"]))
         if tender is None:
             tender = dispatch.latest_tender_for_driver(session, driver)
+        # A winner who was not left on hold -- a voice-campaign bidder, or one
+        # whose line dropped -- is rung back, so the callback hands them the
+        # ride they already won.  A live open tender outranks the old award:
+        # the fresh flash is why the driver is calling now.
+        if tender is None or tender.status != dispatch.STATUS_OPEN:
+            won = dispatch.awarded_order_for_driver(session, driver)
+            if won is not None and won.phone and db.normalize_phone(won.phone) != caller:
+                _save(row, "done", state)
+                return route(won.phone)
         if tender is not None and tender.status == dispatch.STATUS_OPEN:
             order = session.get(db.Order, tender.order_id)
             state.update({"tender": tender.id, "order": order.id if order else None})
@@ -400,7 +403,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         if tender is None:
             return message("driver_taken")
         if tender.status == dispatch.STATUS_OPEN and datetime.utcnow() < tender.closes_at:
-            return _wait_module(tender)
+            return _wait_module(tender, again=True)
         outcome = dispatch.result_for_driver(session, tender, driver)
         if outcome.get("won") and outcome.get("passenger_phone"):
             _save(row, "done", state)
