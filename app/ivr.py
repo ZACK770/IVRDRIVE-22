@@ -413,10 +413,33 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
             return _wait_module(tender, again=True)
         outcome = dispatch.result_for_driver(session, tender, driver)
         if outcome.get("won") and outcome.get("passenger_phone"):
+            passenger = outcome["passenger_phone"]
+            if db.normalize_phone(passenger) != caller:
+                # Bridge inside this very call; if the PBX cannot (it calls
+                # back with dtmf=ERROR), the routing_winner step below rings
+                # the driver back with a connect campaign instead.
+                state["connect"] = passenger
+                _save(row, "routing_winner", state)
+                return route(passenger)
             _save(row, "done", state)
             return message("driver_won_callback")
         _save(row, "done", state)
         return message("driver_taken")
+
+    if row.step == "routing_winner":
+        phone = str(state.pop("connect", "") or "")
+        tender = session.get(db.Tender, int(state.get("tender") or 0))
+        _save(row, "done", state)
+        if phone and driver is not None:
+            pbx.connect_call(
+                session,
+                driver.phone,
+                phone,
+                text=tts.AUDIO_TEXTS["driver_connect_offer"],
+                driver_id=driver.id,
+                tender_id=tender.id if tender else None,
+            )
+        return message("driver_won_callback")
 
     if row.step == "connect":
         phone = str(state.pop("connect", "") or "")

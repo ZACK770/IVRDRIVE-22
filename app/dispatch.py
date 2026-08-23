@@ -300,7 +300,10 @@ def close_tender(session: Session, tender: db.Tender, *, actor: str = "system") 
         if order.status in {"new", "assigned"}:
             order.status = "assigned"
     session.flush()
-    connect_winner(session, tender, winner, order)
+    if not _on_hold_for(session, tender, winner):
+        # A winner still on hold is bridged inside their own call; anyone
+        # else has to be rung back and connected to the passenger.
+        connect_winner(session, tender, winner, order)
     db.log_action(
         session,
         "tender_awarded",

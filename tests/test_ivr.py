@@ -129,7 +129,13 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         tender.closes_at = tender.opened_at
 
     won = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_won_callback"]
+    assert won["type"] == "simpleRouting"
+    assert won["dialPhone"] == PASSENGER
+
+    # The PBX reports a failed bridge by calling back with dtmf=ERROR; the
+    # driver is then rung back by a connect campaign instead.
+    fallback = call(client, "/ivr/driver", callId="c3", caller=DRIVER, dtmf="ERROR")
+    assert fallback["files"][0]["text"] == tts.AUDIO_TEXTS["driver_won_callback"]
 
     with db.session_scope() as session:
         connects = session.scalars(
