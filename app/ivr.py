@@ -323,6 +323,12 @@ async def driver_line(request: Request) -> JSONResponse:
     return JSONResponse(body)
 
 
+def _wait_module(tender: db.Tender) -> dict:
+    """Hold the bidder on the line until the auction window ends."""
+    remaining = int((tender.closes_at - datetime.utcnow()).total_seconds())
+    return menu("driver_wait", keys="1", tries=1, timeout=max(2, min(remaining + 1, 30)))
+
+
 def _driver_step(session: Session, params: dict[str, str]) -> dict:
     caller = db.normalize_phone(params["caller"])
     row = _session_row(session, params["call_id"] or caller, caller)
@@ -348,10 +354,9 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         # whose line dropped -- is rung back, so the callback has to hand them
         # the ride they already won before anything else.
         won = dispatch.awarded_order_for_driver(session, driver)
-        if won is not None:
-            state["connect"] = won.phone
-            _save(row, "connect", state)
-            return message("driver_connecting")
+        if won is not None and won.phone:
+            _save(row, "done", state)
+            return route(won.phone)
         tender = None
         if params.get("tender"):
             tender = session.get(db.Tender, int(params["tender"]))
@@ -378,20 +383,22 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         if not result.get("ok"):
             _save(row, "done", state)
             return message("driver_taken")
-        # The hold message runs for the rest of the window; the PBX comes back
-        # when it ends, which is when the auction is decided.
+        # Keep the bidder on the line: a menu (unlike a message) makes the PBX
+        # come back when its timeout runs out, so the callback loop below can
+        # deliver the result and connect the winner in the same call.
         _save(row, "await_result", state)
-        return message("driver_wait")
+        return _wait_module(tender)
 
     if row.step == "await_result":
         tender = session.get(db.Tender, int(state.get("tender") or 0))
         if tender is None:
             return message("driver_taken")
+        if tender.status == dispatch.STATUS_OPEN and datetime.utcnow() < tender.closes_at:
+            return _wait_module(tender)
         outcome = dispatch.result_for_driver(session, tender, driver)
         if outcome.get("won") and outcome.get("passenger_phone"):
-            state["connect"] = outcome["passenger_phone"]
-            _save(row, "connect", state)
-            return message("driver_connecting")
+            _save(row, "done", state)
+            return route(outcome["passenger_phone"])
         _save(row, "done", state)
         return message("driver_taken")
 

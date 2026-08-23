@@ -46,7 +46,10 @@ def offer_text(order) -> str:
     if order.price:
         parts.append(f"מחיר: {order.price:.0f} שקלים.")
     if order.pickup_time:
-        parts.append(f"מועד איסוף: {order.pickup_time}.")
+        pickup = order.pickup_time.strip()
+        if pickup.lower() in {"now", "asap", "immediately"}:
+            pickup = "עכשיו"
+        parts.append(f"מועד איסוף: {pickup}.")
     if order.luggage:
         parts.append(f"מטען: {order.luggage}.")
     if order.special_requests:
@@ -122,7 +125,7 @@ AUDIO_TEXTS: dict[str, str] = {
     "driver_saved": "הפרטים נשמרו. תודה.",
     "driver_pending": "פרטיך נקלטו במערכת וממתינים לאישור מנהל. תודה ולהתראות.",
     "driver_offer": "נפתחה קריאה חדשה באזורך. לקבלת פרטי הנסיעה והגשת הצעה הקישו 1.",
-    "driver_wait": "ההצעה נשמרה. המערכת בודקת את כל ההצעות. אם תזכה, תחובר מיד לנוסע.",
+    "driver_wait": "ההצעה נשמרה. אנא המתן על הקו. אם תזכה, תחובר מיד לנוסע.",
     "driver_taken": "מצטערים, הנסיעה כבר נתפסה על ידי נהג אחר.",
     "driver_no_offer": "כרגע אין הצעה פתוחה בשטח. נסה שוב מאוחר יותר.",
     "driver_connecting": "הנכם מועברים כעת לשיחה עם הנוסע.",
