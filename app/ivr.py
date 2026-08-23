@@ -267,6 +267,9 @@ def call_params(request: Request) -> dict[str, str]:
         "caller": pick("caller", "phone", "callerid", "did_caller", "from", "pbxphone"),
         "extension": pick("extension", "ext", "did", "pbxextensionid"),
         "dtmf": dtmf,
+        # Seconds the routed leg was answered, reported by the PBX after a
+        # simpleRouting attempt; non-zero means the two parties were bridged.
+        "answered": pick("answerl_", "answerl"),
         "area": pick("area"),
         "tender": pick("tender"),
         "rating": pick("rating"),
@@ -415,21 +418,46 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         if outcome.get("won") and outcome.get("passenger_phone"):
             passenger = outcome["passenger_phone"]
             if db.normalize_phone(passenger) != caller:
-                # Bridge inside this very call; if the PBX cannot (it calls
-                # back with dtmf=ERROR), the routing_winner step below rings
-                # the driver back with a connect campaign instead.
                 state["connect"] = passenger
-                _save(row, "routing_winner", state)
-                return route(passenger)
+                _save(row, "won_menu", state)
+                return menu("driver_won_menu", keys="1,2", tries=2, timeout=8)
             _save(row, "done", state)
             return message("driver_won_callback")
         _save(row, "done", state)
         return message("driver_taken")
 
+    if row.step == "won_menu":
+        phone = str(state.get("connect", "") or "")
+        if not phone:
+            _save(row, "done", state)
+            return message("driver_taken")
+        if dtmf == "2":
+            spelled = " ".join(phone)
+            return menu(
+                "driver_won_menu",
+                text=f"מספר הנוסע: {spelled}. {tts.AUDIO_TEXTS['driver_won_menu']}",
+                keys="1,2",
+                tries=2,
+                timeout=8,
+            )
+        # Bridge inside this very call; if the PBX cannot (it calls back with
+        # dtmf=ERROR), the routing_winner step below rings the driver back
+        # with a connect campaign instead.
+        _save(row, "routing_winner", state)
+        return route(phone)
+
     if row.step == "routing_winner":
         phone = str(state.pop("connect", "") or "")
         tender = session.get(db.Tender, int(state.get("tender") or 0))
         _save(row, "done", state)
+        try:
+            answered = float(params.get("answered") or 0)
+        except ValueError:
+            answered = 0.0
+        if answered > 0:
+            # The passenger answered the bridged leg, so the call already
+            # happened; ringing the driver again would be a nuisance.
+            return hangup()
         if phone and driver is not None:
             pbx.connect_call(
                 session,

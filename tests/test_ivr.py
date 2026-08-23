@@ -129,8 +129,11 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         tender.closes_at = tender.opened_at
 
     won = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert won["type"] == "simpleRouting"
-    assert won["dialPhone"] == PASSENGER
+    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_won_menu"]
+
+    bridged = call(client, "/ivr/driver", callId="c3", caller=DRIVER, dtmf="1")
+    assert bridged["type"] == "simpleRouting"
+    assert bridged["dialPhone"] == PASSENGER
 
     # The PBX reports a failed bridge by calling back with dtmf=ERROR; the
     # driver is then rung back by a connect campaign instead.
