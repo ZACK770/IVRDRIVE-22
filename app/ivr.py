@@ -369,8 +369,15 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         if tender is None or tender.status != dispatch.STATUS_OPEN:
             won = dispatch.awarded_order_for_driver(session, driver)
             if won is not None and won.phone and db.normalize_phone(won.phone) != caller:
+                pbx.connect_call(
+                    session,
+                    driver.phone,
+                    won.phone,
+                    text=tts.AUDIO_TEXTS["driver_connect_offer"],
+                    driver_id=driver.id,
+                )
                 _save(row, "done", state)
-                return route(won.phone)
+                return message("driver_won_callback")
         if tender is not None and tender.status == dispatch.STATUS_OPEN:
             order = session.get(db.Order, tender.order_id)
             state.update({"tender": tender.id, "order": order.id if order else None})
@@ -407,7 +414,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
         outcome = dispatch.result_for_driver(session, tender, driver)
         if outcome.get("won") and outcome.get("passenger_phone"):
             _save(row, "done", state)
-            return route(outcome["passenger_phone"])
+            return message("driver_won_callback")
         _save(row, "done", state)
         return message("driver_taken")
 

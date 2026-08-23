@@ -175,6 +175,77 @@ def flash_call(
     return {"sent": status in {"sent", "dry_run"}, "status": status, "cid": cid, "phone": phone}
 
 
+def connect_call(
+    session: Session,
+    driver_phone: str,
+    passenger_phone: str,
+    *,
+    text: str,
+    driver_id: int | None = None,
+    tender_id: int | None = None,
+) -> dict:
+    """Ring the winning driver; when they answer they hear ``text`` and press
+    1 to be bridged to the passenger (the documented CRM "agent connect"
+    pattern: ``campaignRun`` with a ``keysAction-1: routing-<phone>``).
+    """
+    driver_phone = db.normalize_phone(driver_phone)
+    passenger_phone = db.normalize_phone(passenger_phone)
+
+    cutoff = datetime.utcnow() - timedelta(seconds=60)
+    already = session.scalars(
+        select(db.FlashCall.id).where(
+            db.FlashCall.phone == driver_phone,
+            db.FlashCall.kind == "connect",
+            db.FlashCall.tender_id == tender_id,
+            db.FlashCall.created_at >= cutoff,
+            db.FlashCall.status.in_(("sent", "dry_run")),
+        )
+    ).first()
+    if already:
+        return {"sent": False, "status": "debounced", "phone": driver_phone}
+
+    status, note, campaign_id = "sent", None, None
+    try:
+        payload = _request(
+            "campaignRun",
+            {
+                "audioText": text,
+                "phones": [driver_phone],
+                "title": "חיבור נהג לנוסע",
+                "callLength": 25,
+                "dialRetries": 2,
+                "betweenRetries": 5,
+                "keysAction-1": f"routing-{passenger_phone}",
+            },
+            endpoint="campaignApi.php",
+            json_body=True,
+        )
+        campaign_id = payload.get("campaignId")
+        if payload.get("dry_run"):
+            status = "dry_run"
+    except PbxError as exc:
+        status, note = "failed", str(exc)
+        log.warning("connect call to %s failed: %s", driver_phone, exc)
+
+    session.add(
+        db.FlashCall(
+            phone=driver_phone,
+            driver_id=driver_id,
+            tender_id=tender_id,
+            cid=None,
+            kind="connect",
+            status=status,
+            note=note,
+        )
+    )
+    return {
+        "sent": status in {"sent", "dry_run"},
+        "status": status,
+        "campaign_id": campaign_id,
+        "phone": driver_phone,
+    }
+
+
 def voice_broadcast(
     phones: list[str], *, name: str, module_url: str | None = None
 ) -> dict:

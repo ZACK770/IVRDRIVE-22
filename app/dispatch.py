@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import db, drivers, loyalty, pbx, ratings
+from app import db, drivers, loyalty, pbx, ratings, tts
 
 log = logging.getLogger("dispatch")
 
@@ -300,18 +300,7 @@ def close_tender(session: Session, tender: db.Tender, *, actor: str = "system") 
         if order.status in {"new", "assigned"}:
             order.status = "assigned"
     session.flush()
-    if not _on_hold_for(session, tender, winner):
-        # A driver who bid from a voice campaign, or whose line dropped during
-        # the window, is not listening to the hold message -- without a ring
-        # back nobody would ever tell them they won.
-        pbx.flash_call(
-            session,
-            winner.phone,
-            cid=_area_cid(session, tender),
-            driver_id=winner.id,
-            tender_id=tender.id,
-            kind="award",
-        )
+    connect_winner(session, tender, winner, order)
     db.log_action(
         session,
         "tender_awarded",
@@ -321,6 +310,29 @@ def close_tender(session: Session, tender: db.Tender, *, actor: str = "system") 
         detail=f"driver {winner.id} score {score} of {len(scored)} bids",
     )
     return {"status": STATUS_AWARDED, "driver_id": winner.id, "score": score}
+
+
+def connect_winner(
+    session: Session,
+    tender: db.Tender,
+    winner: db.Driver,
+    order: db.Order | None,
+) -> dict:
+    """Ring the winner and bridge them to the passenger (PBX agent-connect):
+    the PBX calls the driver, they answer and press 1, and the PBX then dials
+    the passenger and joins the two legs."""
+    if order is None or not order.phone:
+        return {"sent": False, "status": "no_passenger_phone"}
+    if db.normalize_phone(order.phone) == db.normalize_phone(winner.phone):
+        return {"sent": False, "status": "self_route"}
+    return pbx.connect_call(
+        session,
+        winner.phone,
+        order.phone,
+        text=tts.AUDIO_TEXTS["driver_connect_offer"],
+        driver_id=winner.id,
+        tender_id=tender.id,
+    )
 
 
 def _area_cid(session: Session, tender: db.Tender) -> str:

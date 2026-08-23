@@ -129,16 +129,18 @@ def test_the_ride_offer_holds_the_driver_until_the_window_closes(client):
         tender.closes_at = tender.opened_at
 
     won = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_connecting"]
+    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_won_callback"]
 
-    connected = call(client, "/ivr/driver", callId="c3", caller=DRIVER)
-    assert connected["type"] == "simpleRouting"
-    assert connected["dialPhone"] == PASSENGER
+    with db.session_scope() as session:
+        connects = session.scalars(
+            db.select(db.FlashCall).where(db.FlashCall.kind == "connect")
+        ).all()
+        assert [row.phone for row in connects] == [DRIVER]
 
 
 def test_a_winner_who_left_the_line_is_rung_and_connected_on_callback(client):
-    """A voice-campaign bidder is not on hold when the window closes, so the
-    award has to reach them as a flash call and their callback as the ride."""
+    """The winner is rung by a connect campaign that bridges them to the
+    passenger; a callback within the award window re-triggers the ring."""
     with db.session_scope() as session:
         driver = drivers.register(session, DRIVER, status="active")
         order = db.Order(call_id="x", phone=PASSENGER, origin="ירושלים", destination="בני ברק")
@@ -150,15 +152,13 @@ def test_a_winner_who_left_the_line_is_rung_and_connected_on_callback(client):
         tender.closes_at = tender.opened_at
         dispatch.close_tender(session, tender)
 
-        awarded = session.scalars(
-            db.select(db.FlashCall).where(db.FlashCall.kind == "award")
+        connects = session.scalars(
+            db.select(db.FlashCall).where(db.FlashCall.kind == "connect")
         ).all()
-        assert [row.phone for row in awarded] == [driver.phone]
+        assert [row.phone for row in connects] == [driver.phone]
 
     won = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
-    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_connecting"]
-    connected = call(client, "/ivr/driver", callId="c9", caller=DRIVER)
-    assert connected == {"type": "simpleRouting", "dialPhone": PASSENGER}
+    assert won["files"][0]["text"] == tts.AUDIO_TEXTS["driver_won_callback"]
 
 
 def test_ringing_in_confirms_a_pending_referral(client):
