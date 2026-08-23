@@ -38,6 +38,14 @@ PREFIX_PADDING_MS = int(os.getenv("GEMINI_VAD_PREFIX_MS", "120"))
 START_SENSITIVITY = os.getenv("GEMINI_VAD_START", "START_SENSITIVITY_HIGH")
 END_SENSITIVITY = os.getenv("GEMINI_VAD_END", "END_SENSITIVITY_HIGH")
 
+#: The Live API bills the whole context again on every turn. A sliding window
+#: caps that growth: once the context passes the trigger, the oldest turns are
+#: dropped down to the target while the system prompt and tools are kept. The
+#: trigger is far above what a normal order call accumulates, so only unusually
+#: long calls are ever compressed.
+COMPRESSION_TRIGGER_TOKENS = int(os.getenv("GEMINI_COMPRESSION_TRIGGER_TOKENS", "12000"))
+COMPRESSION_TARGET_TOKENS = int(os.getenv("GEMINI_COMPRESSION_TARGET_TOKENS", "6000"))
+
 
 class GeminiLiveSession:
     def __init__(
@@ -80,6 +88,10 @@ class GeminiLiveSession:
                         "tools": (
                             [{"functionDeclarations": self._tools}] if self._tools else []
                         ),
+                        "contextWindowCompression": {
+                            "triggerTokens": COMPRESSION_TRIGGER_TOKENS,
+                            "slidingWindow": {"targetTokens": COMPRESSION_TARGET_TOKENS},
+                        },
                         "realtimeInputConfig": {
                             "automaticActivityDetection": {
                                 "startOfSpeechSensitivity": START_SENSITIVITY,

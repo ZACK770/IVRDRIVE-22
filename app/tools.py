@@ -60,23 +60,17 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_recent_call",
-        "description": (
-            "השיחה הקודמת של אותו מתקשר בעשר הדקות האחרונות, אם הייתה. "
-            "השתמש בזה כשנראה שהלקוח ממשיך שיחה קודמת."
-        ),
+        "description": "השיחה הקודמת של אותו מתקשר בעשר הדקות האחרונות, אם הייתה.",
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
     },
     {
         "name": "get_points",
-        "description": ("מצב הקרדיטים של המתקשר במועדון הנוסעים, וכמה קרדיטים חסרים לנסיעת חינם."),
+        "description": "יתרת הקרדיטים של המתקשר וכמה חסר לנסיעת חינם.",
         "parameters": {"type": "object", "properties": {"phone": {"type": "string"}}},
     },
     {
         "name": "get_driver_reputation",
-        "description": (
-            "מוניטין אמיתי של נהג לפי מספר טלפון: ציון כללי, דירוג, מספר נסיעות, "
-            "שנת רכב, דגם וסטטוס. השתמש בזה כשנהג שואל על המוניטין או הציון שלו."
-        ),
+        "description": "מוניטין נהג לפי טלפון: ציון, דירוג, נסיעות ופרטי רכב.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -89,10 +83,7 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "get_passenger_ride_history",
-        "description": (
-            "היסטוריית נסיעות אחרונות של נוסע לפי מספר טלפון. "
-            "מחזירה מוצא, יעד, מחיר, סטטוס ותאריך. השתמש בזה כשהלקוח שואל על נסיעות קודמות."
-        ),
+        "description": "נסיעות אחרונות של נוסע: מוצא, יעד, מחיר, סטטוס ותאריך.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -109,10 +100,7 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "lookup_price",
-        "description": (
-            "בדיקת מחיר למסלול מוצא-יעד. מחפש תחילה ברשימת המחירים המוגדרת, "
-            "ואם אין שם — מחשב ממחירי הזמנות קודמות."
-        ),
+        "description": "בדיקת מחיר למסלול מוצא-יעד.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -125,9 +113,8 @@ DECLARATIONS: list[dict[str, Any]] = [
     {
         "name": "save_order",
         "description": (
-            "שמירת ההזמנה בסיום ופתיחת מכרז לנהגים. קרא לזה רק אחרי שהלקוח אישר את הפרטים. "
-            "אם הלקוח מבקש נהג ספציפי "
-            "(רכב חדש, נהג מבוגר, בלי סמארטפון וכו'), מלא את tender_filters."
+            "שמירת ההזמנה אחרי אישור הלקוח ופתיחת מכרז לנהגים. "
+            "בקשות לנהג ספציפי — מלא tender_filters."
         ),
         "parameters": {
             "type": "object",
@@ -150,11 +137,7 @@ DECLARATIONS: list[dict[str, Any]] = [
                 },
                 "tender_filters": {
                     "type": "object",
-                    "description": (
-                        "סינון נהגים: min_car_year, min_age, min_rating, min_seats, "
-                        "smartphone (true/false), voice_offers (true/false), "
-                        "vehicle_type (למשל סיאנה), tiers (['standard','pro','pro_plus','premium'])"
-                    ),
+                    "description": "סינון נהגים לפי בקשות הלקוח.",
                     "properties": {
                         "min_car_year": {"type": "integer"},
                         "min_seats": {"type": "integer"},
@@ -176,25 +159,22 @@ DECLARATIONS: list[dict[str, Any]] = [
     },
     {
         "name": "transfer_to_representative",
-        "description": (
-            "העבר את השיחה לנציג אנושי. השתמש בזה רק אם הלקוח מבקש במפורש נציג "
-            "אחרי שניסית לעזור לו, ולא כפתרון ראשון."
-        ),
+        "description": "העברת השיחה לנציג אנושי.",
         "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "hangup_call",
-        "description": "נתק את השיחה לאחר שסיכמת את ההזמנה והלקוח אישר. קרא לזה בסיום.",
+        "description": "ניתוק השיחה בסיום.",
         "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "redeem_order",
-        "description": "מימוש קרדיטים לתשלום הנסיעה האחרונה שנשמרה בשיחה. לפני זה בדוק get_points.",
+        "description": "מימוש קרדיטים לנסיעה האחרונה שנשמרה. בדוק קודם get_points.",
         "parameters": {"type": "object", "properties": {}},
     },
     {
         "name": "create_referral",
-        "description": "שיוך מספר טלפון של חבר/ת למבצע שתפו וסעו. שולחת צינתוק לאישור.",
+        "description": "שיוך טלפון של חבר למבצע שתפו וסעו.",
         "parameters": {
             "type": "object",
             "properties": {
