@@ -108,11 +108,16 @@ class CallBridge:
                 return
             self._cap.record("out", "binary", frame)
 
-    async def _drain_and_close(self, *, delay_s: float = 1.5) -> None:
-        """Give the final audio frames time to reach the PBX before closing."""
-        deadline = time.monotonic() + delay_s
+    async def _drain_and_close(self, *, max_wait_s: float = 30.0, linger_s: float = 1.0) -> None:
+        """Play out every queued frame, then give the PBX jitter buffer a moment
+        before closing, so the caller hears the whole goodbye sentence."""
+        if self._partial:
+            self._out.append(self._partial.ljust(FRAME_BYTES, b"\x00"))
+            self._partial = b""
+        deadline = time.monotonic() + max_wait_s
         while time.monotonic() < deadline and self._out:
             await asyncio.sleep(FRAME_S)
+        await asyncio.sleep(linger_s)
         try:
             await self._ws.close()
         except Exception:
