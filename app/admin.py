@@ -148,7 +148,7 @@ def calls_page() -> HTMLResponse:
         costs = [_call_cost_usd(r.stats_json) for r in rows]
         listed = "".join(
             f"<tr><td>{r.started_at:%d/%m %H:%M}</td><td>{escape(r.phone or '')}</td>"
-            f"<td>{escape(r.summary or '')}</td><td>${c:.4f}</td>"
+            f"<td>{escape(r.summary or '')}</td><td>₪{c * db.setting_float('usd_to_ils'):.2f}</td>"
             f'<td><a href="/admin/calls/{r.id}">תמליל</a></td></tr>'
             for r, c in zip(rows, costs, strict=True)
         )

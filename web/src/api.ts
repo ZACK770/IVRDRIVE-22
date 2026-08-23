@@ -58,6 +58,7 @@ export interface Call {
   started_at: string;
   summary: string | null;
   cost_usd: number;
+  cost_ils: number;
 }
 
 export interface CallDetail extends Omit<Call, "cost_usd"> {
@@ -79,6 +80,7 @@ export interface Summary {
   orders_24h: number;
   calls_24h: number;
   cost_usd_24h: number;
+  cost_ils_24h: number;
   by_status: Record<OrderStatus, number>;
 }
 
@@ -349,6 +351,8 @@ export const api = {
   }>(`/api/tenders/${id}`),
   closeTender: (id: number) => write<{ ok: boolean }>(`/api/tenders/${id}/close`, {}),
   cancelTender: (id: number) => write<{ ok: boolean }>(`/api/tenders/${id}/cancel`, {}),
+  connectTender: (id: number) =>
+    write<{ sent: boolean; status: string }>(`/api/tenders/${id}/connect`, {}),
   finishOrder: (id: number) => write<{ ok: boolean }>(`/api/orders/${id}/finish`, {}),
   cancelOrder: (id: number) => write<{ points_reversed: number }>(`/api/orders/${id}/cancel`, {}),
   redeemOrder: (id: number) => write<{ spent: number }>(`/api/orders/${id}/redeem`, {}),

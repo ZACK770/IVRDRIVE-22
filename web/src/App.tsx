@@ -95,7 +95,7 @@ function Board() {
           <span>שיחות ב-24 שעות</span>
         </div>
         <div className="card">
-          <b>${(summary.data?.cost_usd_24h ?? 0).toFixed(2)}</b>
+          <b>₪{(summary.data?.cost_ils_24h ?? 0).toFixed(2)}</b>
           <span>עלות הבוט ב-24 שעות</span>
         </div>
       </div>
@@ -336,7 +336,7 @@ function Calls() {
   const { data, error } = usePoll<Call[]>(load, 15);
   const [open, setOpen] = useState<CallDetail | null>(null);
 
-  const total = (data ?? []).reduce((sum, call) => sum + call.cost_usd, 0);
+  const total = (data ?? []).reduce((sum, call) => sum + call.cost_ils, 0);
 
   return (
     <>
@@ -344,7 +344,7 @@ function Calls() {
       {error && <div className="error">{error}</div>}
       <div className="cards">
         <div className="card">
-          <b>${total.toFixed(2)}</b>
+          <b>₪{total.toFixed(2)}</b>
           <span>עלות {data?.length ?? 0} השיחות האחרונות</span>
         </div>
       </div>
@@ -364,7 +364,7 @@ function Calls() {
               <td>{clock(call.started_at)}</td>
               <td>{call.phone ?? "—"}</td>
               <td>{call.summary ?? "—"}</td>
-              <td>${call.cost_usd.toFixed(4)}</td>
+              <td>₪{call.cost_ils.toFixed(2)}</td>
               <td>
                 <button
                   className="action"

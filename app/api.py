@@ -125,10 +125,12 @@ def summary() -> dict:
             float((_call_usage(c.stats_json).get("usage") or {}).get("cost_usd") or 0.0)
             for c in calls
         )
+        usd_to_ils = db.setting_float("usd_to_ils")
         return {
             "orders_24h": len(orders),
             "calls_24h": len(calls),
             "cost_usd_24h": round(cost, 4),
+            "cost_ils_24h": round(cost * usd_to_ils, 2),
             "by_status": by_status,
         }
 
@@ -139,6 +141,7 @@ def list_calls(limit: int = 100) -> dict:
         rows = session.scalars(
             select(db.CallLog).order_by(db.CallLog.started_at.desc()).limit(limit)
         ).all()
+        usd_to_ils = db.setting_float("usd_to_ils")
         return {
             "calls": [
                 {
@@ -147,11 +150,13 @@ def list_calls(limit: int = 100) -> dict:
                     "phone": r.phone,
                     "started_at": r.started_at.isoformat(),
                     "summary": r.summary,
-                    "cost_usd": float(
-                        (_call_usage(r.stats_json).get("usage") or {}).get("cost_usd") or 0.0
-                    ),
+                    "cost_usd": cost_usd,
+                    "cost_ils": round(cost_usd * usd_to_ils, 2),
                 }
                 for r in rows
+                for cost_usd in [
+                    float((_call_usage(r.stats_json).get("usage") or {}).get("cost_usd") or 0.0)
+                ]
             ]
         }
 
@@ -162,6 +167,7 @@ def call_detail(call_pk: int) -> dict:
         row = session.get(db.CallLog, call_pk)
         if row is None:
             raise HTTPException(status_code=404, detail="no such call")
+        cost_usd = float((_call_usage(row.stats_json).get("usage") or {}).get("cost_usd") or 0.0)
         return {
             "id": row.id,
             "call_id": row.call_id,
@@ -169,6 +175,8 @@ def call_detail(call_pk: int) -> dict:
             "started_at": row.started_at.isoformat(),
             "transcript": row.transcript,
             "summary": row.summary,
+            "cost_usd": cost_usd,
+            "cost_ils": round(cost_usd * db.setting_float("usd_to_ils"), 2),
             "stats": _call_usage(row.stats_json),
         }
 

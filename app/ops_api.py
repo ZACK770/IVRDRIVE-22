@@ -353,6 +353,25 @@ def cancel_tender(tender_id: int, actor: Actor) -> dict:
         return {"ok": True}
 
 
+@router.post("/tenders/{tender_id}/connect")
+def connect_tender(tender_id: int, actor: Actor) -> dict:
+    with db.session_scope() as session:
+        tender = session.get(db.Tender, tender_id)
+        if tender is None:
+            raise HTTPException(status_code=404, detail="no such tender")
+        if tender.status != dispatch.STATUS_AWARDED or not tender.awarded_driver_id:
+            raise HTTPException(status_code=409, detail="tender has no awarded driver")
+        winner = session.get(db.Driver, tender.awarded_driver_id)
+        order = session.get(db.Order, tender.order_id)
+        if winner is None or order is None:
+            raise HTTPException(status_code=409, detail="winner or passenger not found")
+        result = dispatch.connect_winner(session, tender, winner, order)
+        db.log_action(
+            session, "winner_connect_requested", actor=actor, entity="tender", entity_id=tender.id
+        )
+        return result
+
+
 # ------------------------------------------------------------------- orders
 
 

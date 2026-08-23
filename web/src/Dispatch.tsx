@@ -240,6 +240,26 @@ export function Tenders() {
             הזמנה #{detail.tender.order_id} | אזור {detail.tender.area ?? "—"} | סטטוס{" "}
             {detail.tender.status}
           </p>
+          {detail.tender.status === "awarded" && detail.tender.awarded_driver_id && (
+            <button
+              className="action"
+              onClick={() =>
+                api
+                  .connectTender(detail.tender.id)
+                  .then((result) => {
+                    toast.success(
+                      result.sent
+                        ? "שיחת חיבור נשלחה לנהג הזוכה"
+                        : `שיחת חיבור: ${result.status}`,
+                    );
+                    return api.tender(detail.tender.id).then(setDetail);
+                  })
+                  .catch((err: Error) => toast.error(`שיחת חיבור נכשלה: ${err.message}`))
+              }
+            >
+              שליחת שיחת חיבור לנהג הזוכה
+            </button>
+          )}
 
           <h3>צינתוקים שנשלחו ({detail.called.length})</h3>
           <table>

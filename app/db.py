@@ -943,6 +943,8 @@ def _add_missing_columns() -> None:
 #: them all; every reader goes through `setting_int` / `setting_float`.
 #: `representative_extension` is the parallel-channel human target.
 DEFAULT_SETTINGS: dict[str, str] = {
+    #: Israeli shekels per US dollar for displaying AI call costs.
+    "usd_to_ils": "3.35",
     #: Points per shekel of an order that actually completed.
     "points_per_shekel": "1",
     #: Welcome gift, granted once per phone on its first completed ride.
