@@ -1024,8 +1024,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "location_fresh_hours": "10",
     #: Delay between a finished ride and the rating call.
     "rating_delay_minutes": "90",
-    #: The cut the office takes, used by the driver statements.
-    "commission_rate": "0.15",
+    #: The cut the office takes, used for the driver debt (statement/charges).
+    "commission_rate": "0.10",
     #: Where the PBX reaches us. Module API URLs are built from it, so a wrong
     #: value means calls that reach a menu and go nowhere.
     "public_base_url": os.getenv("PUBLIC_BASE_URL", ""),
