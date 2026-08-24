@@ -475,6 +475,7 @@ def cancel_order(order_id: int, actor: Actor) -> dict:
         if order is None:
             raise HTTPException(status_code=404, detail="no such order")
         reversed_points = loyalty.reverse_for_order(session, order, actor=actor)
+        accounting.void_driver_charge(session, order.id)
         order.status = "cancelled"
         return {"ok": True, "points_reversed": reversed_points}
 
@@ -698,26 +699,76 @@ def accounting_driver(driver_id: int, days: int = 30) -> dict:
         return statement
 
 
+@router.post("/accounting/drivers/{driver_id}/payments")
+def add_driver_payment(driver_id: int, payload: Payload, actor: Actor) -> dict:
+    """Record a payment received from a driver."""
+    try:
+        amount = float(payload.get("amount"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="amount must be a number") from exc
+    method = str(payload.get("method") or "").strip() or None
+    notes = str(payload.get("notes") or "").strip() or None
+    with db.session_scope() as session:
+        if session.get(db.Driver, driver_id) is None:
+            raise HTTPException(status_code=404, detail="no such driver")
+        row = accounting.add_driver_payment(
+            session,
+            driver_id,
+            amount,
+            method=method,
+            notes=notes,
+            actor=actor,
+        )
+        return {
+            "payment_id": row.id,
+            "driver_id": row.driver_id,
+            "amount": row.amount,
+            "method": row.method,
+            "notes": row.notes,
+            "paid_at": row.paid_at.isoformat() if row.paid_at else None,
+        }
+
+
 @router.post("/accounting/drivers/{driver_id}/send")
 def send_driver_statement(driver_id: int, payload: Payload, actor: Actor) -> dict:
-    """The commission invoice: the driver's rides and what they owe, pushed to
-    whatever messaging webhook the office uses."""
+    """The commission invoice: the driver's rides, what they owe and what they
+    already paid, pushed to whatever messaging webhook the office uses."""
     days = _int(payload, "days") or 30
     with db.session_scope() as session:
         statement = accounting.driver_statement(session, driver_id, days)
         if not statement:
             raise HTTPException(status_code=404, detail="no such driver")
         lines = [
-            f"פירוט נסיעות ל{statement['driver']['name'] or statement['driver']['phone']}",
+            f"פירוט חשבון ל{statement['driver']['name'] or statement['driver']['phone']}",
             f"תקופה: {days} ימים אחרונים",
+            "",
+            "נסיעות:",
             *[
                 f"{r['date'][:10]} {r['origin']} → {r['destination']} "
                 f"{r['price']}₪ (עמלה {r['commission']}₪)"
                 for r in statement["rides"]
             ],
             f"סה\"כ נסיעות: {len(statement['rides'])}",
-            f"סה\"כ לתשלום תיווך: {statement['total_commission']}₪",
+            f"סה\"כ חובות מצטבר: {statement['total_commission']}₪",
         ]
+        if statement["payments"]:
+            lines.extend(
+                [
+                    "",
+                    "תקבולים:",
+                    *[
+                        f"{p['paid_at'][:10]} {p['amount']}₪" + (f" ({p['method']})" if p["method"] else "")
+                        for p in statement["payments"]
+                    ],
+                    f"סה\"כ תקבולים: {statement['total_payments']}₪",
+                ]
+            )
+        lines.extend(
+            [
+                "",
+                f"יתרת חוב: {statement['balance']}₪",
+            ]
+        )
         text = "\n".join(lines)
         sent = notify.send_text(
             text, kind="driver_statement", extra={"driver": statement["driver"]}
@@ -728,7 +779,7 @@ def send_driver_statement(driver_id: int, payload: Payload, actor: Actor) -> dic
             actor=actor,
             entity="driver",
             entity_id=driver_id,
-            detail=f"{len(statement['rides'])} rides",
+            detail=f"{len(statement['rides'])} rides, balance {statement['balance']}",
         )
         return {"sent": sent, "text": text, **statement}
 

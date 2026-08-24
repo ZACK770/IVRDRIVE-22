@@ -263,6 +263,17 @@ export interface DriverRides {
   rides: number;
   fares: number;
   commission: number;
+  total_charges: number;
+  total_payments: number;
+  balance: number;
+}
+
+export interface Payment {
+  id: number;
+  amount: number;
+  paid_at: string;
+  method: string | null;
+  notes: string | null;
 }
 
 export interface Statement {
@@ -277,8 +288,11 @@ export interface Statement {
     paid_with_points: boolean;
     commission: number;
   }[];
+  payments: Payment[];
   total_fares: number;
   total_commission: number;
+  total_payments: number;
+  balance: number;
   text?: string;
   sent?: boolean;
 }
@@ -405,6 +419,8 @@ export const api = {
     request<Statement>(`/api/accounting/drivers/${id}?days=${days}`),
   sendStatement: (id: number, days: number) =>
     write<Statement>(`/api/accounting/drivers/${id}/send`, { days }),
+  addDriverPayment: (id: number, amount: number, method?: string, notes?: string) =>
+    write<Payment>(`/api/accounting/drivers/${id}/payments`, { amount, method, notes }),
   expenses: () => request<{ expenses: Expense[] }>("/api/expenses").then((r) => r.expenses),
   addExpense: (category: string, amount: number, note: string) =>
     write<{ id: number }>("/api/expenses", { category, amount, note }),

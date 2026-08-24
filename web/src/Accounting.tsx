@@ -10,6 +10,7 @@ export function Accounting() {
   const perDriver = usePoll<DriverRides[]>(loadDrivers, 60);
   const [statement, setStatement] = useState<Statement | null>(null);
   const [note, setNote] = useState("");
+  const [pay, setPay] = useState({ amount: "", method: "", notes: "" });
 
   return (
     <>
@@ -61,6 +62,9 @@ export function Accounting() {
             <th>נסיעות</th>
             <th>מחזור</th>
             <th>עמלה</th>
+            <th>חוב מצטבר</th>
+            <th>תקבולים</th>
+            <th>יתרה</th>
             <th />
           </tr>
         </thead>
@@ -72,6 +76,11 @@ export function Accounting() {
               <td data-label="נסיעות">{row.rides}</td>
               <td data-label="מחזור">{row.fares.toFixed(0)} ₪</td>
               <td data-label="עמלה">{row.commission.toFixed(0)} ₪</td>
+              <td data-label="חוב מצטבר">{row.total_charges.toFixed(0)} ₪</td>
+              <td data-label="תקבולים">{row.total_payments.toFixed(0)} ₪</td>
+              <td data-label="יתרה" className={row.balance > 0 ? "negative" : "positive"}>
+                {row.balance.toFixed(0)} ₪
+              </td>
               <td>
                 <button onClick={() => api.statement(row.driver_id, days).then(setStatement)}>
                   פירוט
@@ -99,11 +108,28 @@ export function Accounting() {
         <div className="panel">
           <div className="row">
             <h2>
-              {statement.driver.name ?? statement.driver.phone} · לתשלום{" "}
-              {statement.total_commission.toFixed(0)} ₪
+              {statement.driver.name ?? statement.driver.phone} · יתרה{" "}
+              <span className={statement.balance > 0 ? "negative" : "positive"}>
+                {statement.balance.toFixed(0)} ₪
+              </span>
             </h2>
             <button onClick={() => setStatement(null)}>סגור</button>
           </div>
+          <div className="cards">
+            <div className="card">
+              <b>{statement.total_commission.toFixed(0)} ₪</b>
+              <span>חובות מצטברות</span>
+            </div>
+            <div className="card">
+              <b>{statement.total_payments.toFixed(0)} ₪</b>
+              <span>תקבולים מצטברים</span>
+            </div>
+            <div className="card">
+              <b>{statement.rides.length}</b>
+              <span>נסיעות בתקופה</span>
+            </div>
+          </div>
+          <h3>נסיעות</h3>
           <table>
             <thead>
               <tr>
@@ -128,6 +154,70 @@ export function Accounting() {
               ))}
             </tbody>
           </table>
+          {statement.payments.length > 0 && (
+            <>
+              <h3>תקבולים</h3>
+              <table>
+                <thead>
+                  <tr>
+                    <th>מתי</th>
+                    <th>סכום</th>
+                    <th>אמצעי</th>
+                    <th>הערה</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {statement.payments.map((p) => (
+                    <tr key={p.id}>
+                      <td data-label="מתי">{clock(p.paid_at)}</td>
+                      <td data-label="סכום">{p.amount.toFixed(0)} ₪</td>
+                      <td data-label="אמצעי">{p.method ?? "—"}</td>
+                      <td data-label="הערה">{p.notes ?? "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+          <h3>רשום תקבול</h3>
+          <div className="row">
+            <input
+              placeholder="סכום"
+              type="number"
+              value={pay.amount}
+              onChange={(e) => setPay({ ...pay, amount: e.target.value })}
+            />
+            <input
+              placeholder="אמצעי תשלום"
+              value={pay.method}
+              onChange={(e) => setPay({ ...pay, method: e.target.value })}
+            />
+            <input
+              placeholder="הערה"
+              value={pay.notes}
+              onChange={(e) => setPay({ ...pay, notes: e.target.value })}
+            />
+            <button
+              className="action"
+              onClick={() => {
+                const amount = Number(pay.amount);
+                if (!amount || amount <= 0) return setNote("סכום התקבול חיובי");
+                api
+                  .addDriverPayment(statement.driver.id, amount, pay.method, pay.notes)
+                  .then(() =>
+                    api.statement(statement.driver.id, days).then((s) => {
+                      setStatement(s);
+                      setPay({ amount: "", method: "", notes: "" });
+                      setNote("התקבול נרשם");
+                      perDriver.refresh();
+                    })
+                  )
+                  .catch((err: Error) => setNote(err.message));
+              }}
+            >
+              רשום תקבול
+            </button>
+          </div>
         </div>
       )}
 

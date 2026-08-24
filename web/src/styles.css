@@ -224,6 +224,16 @@ textarea {
   margin-bottom: 1rem;
 }
 
+.negative {
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.positive {
+  color: var(--ok);
+  font-weight: 700;
+}
+
 .toasts {
   position: fixed;
   inset-block-start: 1rem;

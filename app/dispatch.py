@@ -25,7 +25,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import db, drivers, loyalty, pbx, ratings, tts
+from app import accounting, db, drivers, loyalty, pbx, ratings, tts
 
 log = logging.getLogger("dispatch")
 
@@ -408,6 +408,7 @@ def finish_ride(session: Session, order: db.Order, *, area: str | None = None) -
     order.finished_at = datetime.utcnow()
     rate = db.setting_float("commission_rate")
     order.commission = round(float(order.price or 0.0) * rate, 2)
+    accounting.ensure_driver_charge(session, order)
 
     driver = session.get(db.Driver, order.driver_id) if order.driver_id else None
     if driver is not None:

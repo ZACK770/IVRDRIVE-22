@@ -65,8 +65,118 @@ def profit_and_loss(session: Session, days: int = 30) -> dict:
     }
 
 
+def driver_balance(session: Session, driver_id: int) -> float:
+    """Total charges minus total payments for one driver."""
+    total_charges = float(
+        session.scalar(
+            select(func.coalesce(func.sum(db.DriverCharge.amount), 0.0)).where(
+                db.DriverCharge.driver_id == driver_id
+            )
+        )
+        or 0.0
+    )
+    total_payments = float(
+        session.scalar(
+            select(func.coalesce(func.sum(db.DriverPayment.amount), 0.0)).where(
+                db.DriverPayment.driver_id == driver_id
+            )
+        )
+        or 0.0
+    )
+    return round(total_charges - total_payments, 2)
+
+
+def driver_payments(session: Session, driver_id: int, days: int = 30) -> list[dict]:
+    """Payments a driver made during the window."""
+    since = _window(days)
+    rows = session.scalars(
+        select(db.DriverPayment)
+        .where(
+            db.DriverPayment.driver_id == driver_id,
+            db.DriverPayment.paid_at >= since,
+        )
+        .order_by(db.DriverPayment.paid_at.desc())
+    ).all()
+    return [
+        {
+            "id": p.id,
+            "amount": round(float(p.amount), 2),
+            "paid_at": p.paid_at.isoformat() if p.paid_at else None,
+            "method": p.method,
+            "notes": p.notes,
+        }
+        for p in rows
+    ]
+
+
+def ensure_driver_charge(session: Session, order: db.Order) -> db.DriverCharge | None:
+    """Create or update the driver's debt for a finished ride."""
+    if not order.driver_id:
+        return None
+    rate = db.setting_float("commission_rate")
+    amount = round(
+        float(
+            order.commission
+            if order.commission is not None
+            else float(order.price or 0.0) * rate
+        ),
+        2,
+    )
+    charge = session.scalars(
+        select(db.DriverCharge).where(db.DriverCharge.order_id == order.id)
+    ).first()
+    if charge is None:
+        charge = db.DriverCharge(
+            driver_id=order.driver_id,
+            order_id=order.id,
+            amount=amount,
+        )
+        session.add(charge)
+    else:
+        charge.driver_id = order.driver_id
+        charge.amount = amount
+        charge.updated_at = datetime.utcnow()
+    session.flush()
+    return charge
+
+
+def void_driver_charge(session: Session, order_id: int) -> None:
+    """Remove a debt when a ride did not happen."""
+    session.execute(
+        db.DriverCharge.__table__.delete().where(db.DriverCharge.order_id == order_id)
+    )
+
+
+def add_driver_payment(
+    session: Session,
+    driver_id: int,
+    amount: float,
+    *,
+    method: str | None = None,
+    notes: str | None = None,
+    actor: str = "system",
+) -> db.DriverPayment:
+    row = db.DriverPayment(
+        driver_id=driver_id,
+        amount=amount,
+        method=method,
+        notes=notes,
+    )
+    session.add(row)
+    session.flush()
+    db.log_action(
+        session,
+        "driver_payment_added",
+        actor=actor,
+        entity="driver",
+        entity_id=driver_id,
+        detail=f"{amount} {method}",
+    )
+    return row
+
+
 def driver_statement(session: Session, driver_id: int, days: int = 30) -> dict:
-    """What the office bills one driver: their completed rides and the cut."""
+    """What the office bills one driver: rides, charges, payments and balance."""
     since = _window(days)
     driver = session.get(db.Driver, driver_id)
     if driver is None:
@@ -96,12 +206,32 @@ def driver_statement(session: Session, driver_id: int, days: int = 30) -> dict:
         }
         for o in rows
     ]
+    payments = driver_payments(session, driver_id, days)
+    total_charges = float(
+        session.scalar(
+            select(func.coalesce(func.sum(db.DriverCharge.amount), 0.0)).where(
+                db.DriverCharge.driver_id == driver_id
+            )
+        )
+        or 0.0
+    )
+    total_payments = float(
+        session.scalar(
+            select(func.coalesce(func.sum(db.DriverPayment.amount), 0.0)).where(
+                db.DriverPayment.driver_id == driver_id
+            )
+        )
+        or 0.0
+    )
     return {
         "driver": {"id": driver.id, "name": driver.name, "phone": driver.phone},
         "days": days,
         "rides": rides,
+        "payments": payments,
         "total_fares": round(sum(r["price"] for r in rides), 2),
-        "total_commission": round(sum(r["commission"] for r in rides), 2),
+        "total_commission": round(total_charges, 2),
+        "total_payments": round(total_payments, 2),
+        "balance": round(total_charges - total_payments, 2),
     }
 
 
@@ -122,9 +252,27 @@ def rides_by_driver(session: Session, days: int = 30) -> list[dict]:
         .group_by(db.Order.driver_id)
     ).all()
     names = {d.id: (d.name, d.phone) for d in session.scalars(select(db.Driver)).all()}
+    charge_totals = dict(
+        session.execute(
+            select(
+                db.DriverCharge.driver_id,
+                func.coalesce(func.sum(db.DriverCharge.amount), 0.0),
+            ).group_by(db.DriverCharge.driver_id)
+        ).all()
+    )
+    payment_totals = dict(
+        session.execute(
+            select(
+                db.DriverPayment.driver_id,
+                func.coalesce(func.sum(db.DriverPayment.amount), 0.0),
+            ).group_by(db.DriverPayment.driver_id)
+        ).all()
+    )
     out = []
     for driver_id, count, fares, commission in rows:
         name, phone = names.get(driver_id, (None, None))
+        total_charges = float(charge_totals.get(driver_id, 0.0))
+        total_payments = float(payment_totals.get(driver_id, 0.0))
         out.append(
             {
                 "driver_id": driver_id,
@@ -133,6 +281,9 @@ def rides_by_driver(session: Session, days: int = 30) -> list[dict]:
                 "rides": int(count),
                 "fares": round(float(fares), 2),
                 "commission": round(float(commission), 2),
+                "total_charges": round(total_charges, 2),
+                "total_payments": round(total_payments, 2),
+                "balance": round(total_charges - total_payments, 2),
             }
         )
     return sorted(out, key=lambda row: -row["rides"])

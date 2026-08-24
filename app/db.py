@@ -348,6 +348,32 @@ class Expense(Base):
     note: Mapped[str | None] = mapped_column(Text)
 
 
+class DriverCharge(Base):
+    """Debt a driver owes the office for one completed ride."""
+
+    __tablename__ = "driver_charges"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    driver_id: Mapped[int] = mapped_column(Integer, index=True)
+    order_id: Mapped[int | None] = mapped_column(Integer, index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class DriverPayment(Base):
+    """Money a driver paid back to the office."""
+
+    __tablename__ = "driver_payments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    driver_id: Mapped[int] = mapped_column(Integer, index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    paid_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+    method: Mapped[str | None] = mapped_column(String(32))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+
 class ActionLog(Base):
     __tablename__ = "action_log"
 
