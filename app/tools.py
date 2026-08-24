@@ -364,39 +364,63 @@ class ToolContext:
         if not origin or not destination:
             return {"found": False, "error": "חסר מוצא או יעד"}
 
-        # 1. Try the configured price knowledge.
         botconfig = db.get_botconfig()
         knowledge = (botconfig.get("knowledge") or "").lower()
-        price = _extract_price_from_text(knowledge, origin, destination)
-        if price is not None:
-            return {"found": True, "origin": origin, "destination": destination, "price": price}
 
-        # 2. Fall back to the average of recent completed orders.
         with db.session_scope() as session:
-            since = datetime.utcnow() - timedelta(days=90)
-            rows = session.scalars(
-                select(db.Order)
-                .where(
-                    db.Order.origin.ilike(f"%{origin}%"),
-                    db.Order.destination.ilike(f"%{destination}%"),
-                    db.Order.status == "done",
-                    db.Order.price != None,
-                    db.Order.created_at >= since,
-                )
-                .order_by(db.Order.created_at.desc())
-                .limit(20)
-            ).all()
-            prices = [float(row.price) for row in rows if row.price is not None]
-            if prices:
-                return {
-                    "found": True,
-                    "origin": origin,
-                    "destination": destination,
-                    "price": round(sum(prices) / len(prices), 0),
-                    "based_on": len(prices),
-                }
+            # The caller may say "ירושלים ארנוף" while the price list only has
+            # "בני ברק ירושלים". Resolve to the canonical city/area first, but
+            # always try the exact phrase before downgrading to city-level.
+            origin_city = dispatch.resolve_area(session, origin) or origin
+            destination_city = dispatch.resolve_area(session, destination) or destination
 
-        return {"found": False, "origin": origin, "destination": destination}
+            # 1. Try the configured price knowledge (exact, then city-level).
+            pairs = [(origin, destination), (origin_city, destination_city)]
+            seen = set()
+            for o, d in pairs:
+                key = (o, d)
+                if key in seen:
+                    continue
+                seen.add(key)
+                price = _extract_price_from_text(knowledge, o, d)
+                if price is not None:
+                    return {"found": True, "origin": origin, "destination": destination, "price": price}
+
+            # 2. Fall back to the average of recent completed orders.
+            since = datetime.utcnow() - timedelta(days=90)
+
+            def _recent(o: str, d: str) -> list[db.Order]:
+                return list(session.scalars(
+                    select(db.Order)
+                    .where(
+                        db.Order.origin.ilike(f"%{o}%"),
+                        db.Order.destination.ilike(f"%{d}%"),
+                        db.Order.status == "done",
+                        db.Order.price != None,
+                        db.Order.created_at >= since,
+                    )
+                    .order_by(db.Order.created_at.desc())
+                    .limit(20)
+                ).all())
+
+            seen.clear()
+            for o, d in pairs:
+                key = (o, d)
+                if key in seen:
+                    continue
+                seen.add(key)
+                rows = _recent(o, d)
+                prices = [float(row.price) for row in rows if row.price is not None]
+                if prices:
+                    return {
+                        "found": True,
+                        "origin": origin,
+                        "destination": destination,
+                        "price": round(sum(prices) / len(prices), 0),
+                        "based_on": len(prices),
+                    }
+
+            return {"found": False, "origin": origin, "destination": destination}
 
     def _save_order(self, args: dict[str, Any]) -> dict[str, Any]:
         with db.session_scope() as session:
