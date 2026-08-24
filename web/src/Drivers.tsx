@@ -470,8 +470,7 @@ export function Areas() {
         <thead>
           <tr>
             <th>אזור</th>
-            <th>מספר לחיוג חוזר</th>
-            <th>מזהה מתקשר</th>
+            <th>מספר יוצא / לחיוג חוזר</th>
             <th>פעיל</th>
           </tr>
         </thead>
@@ -479,7 +478,7 @@ export function Areas() {
           {(data ?? []).map((area) => (
             <tr key={area.id}>
               <td data-label="אזור">{area.name}</td>
-              <td data-label="מספר לחיוג חוזר">{area.callback_number ?? "—"}</td>
+              <td data-label="מספר יוצא / לחיוג חוזר">{area.callback_number ?? "—"}</td>
               <td data-label="פעיל">{area.active ? "כן" : "לא"}</td>
             </tr>
           ))}
@@ -492,7 +491,7 @@ export function Areas() {
           onChange={(e) => setForm({ ...form, name: e.target.value })}
         />
         <input
-          placeholder="מספר לחיוג חוזר"
+          placeholder="מספר יוצא / לחיוג חוזר"
           value={form.callback_number}
           onChange={(e) => setForm({ ...form, callback_number: e.target.value })}
         />

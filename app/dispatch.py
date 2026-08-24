@@ -147,6 +147,7 @@ def blast_tender(session: Session, tender: db.Tender, filters: dict) -> dict:
             tender_id=tender.id,
             name=f"tender-{tender.id}",
             module_url=voice_module_url(tender),
+            caller_id=db.area_outgoing_caller_id(session, tender.area),
         )
     except pbx.PbxError as exc:
         log.warning("campaign for tender %s failed: %s", tender.id, exc)
@@ -312,6 +313,7 @@ def connect_winner(
         text=tts.AUDIO_TEXTS["driver_connect_offer"],
         driver_id=winner.id,
         tender_id=tender.id,
+        caller_id=db.area_outgoing_caller_id(session, tender.area),
     )
 
 

@@ -64,6 +64,12 @@ def register(
     quiet_to: int | None = None,
     status: str | None = None,
     notes: str | None = None,
+    terms_accepted: bool | None = None,
+    terms_accepted_at: datetime | None = None,
+    terms_version: str | None = None,
+    terms_ip: str | None = None,
+    has_documents: bool | None = None,
+    accepts_rides_limit: bool | None = None,
 ) -> db.Driver:
     """Self-registration from the phone menu, or dispatcher entry. A new driver
     starts `pending` — they get no offers until the office approves them.
@@ -99,6 +105,18 @@ def register(
         driver.status = status
     if notes is not None:
         driver.notes = notes
+    if terms_accepted is not None:
+        driver.terms_accepted = terms_accepted
+    if terms_accepted_at is not None:
+        driver.terms_accepted_at = terms_accepted_at
+    if terms_version is not None:
+        driver.terms_version = terms_version
+    if terms_ip is not None:
+        driver.terms_ip = terms_ip
+    if has_documents is not None:
+        driver.has_documents = has_documents
+    if accepts_rides_limit is not None:
+        driver.accepts_rides_limit = accepts_rides_limit
     session.flush()
     db.log_action(
         session, "driver_saved", entity="driver", entity_id=driver.id, detail=phone
@@ -433,6 +451,11 @@ def to_json(
         "last_area": driver.last_area,
         "last_area_at": driver.last_area_at.isoformat() if driver.last_area_at else None,
         "notes": driver.notes,
+        "terms_accepted": driver.terms_accepted,
+        "terms_accepted_at": driver.terms_accepted_at.isoformat() if driver.terms_accepted_at else None,
+        "terms_version": driver.terms_version,
+        "has_documents": driver.has_documents,
+        "accepts_rides_limit": driver.accepts_rides_limit,
     }
 
 

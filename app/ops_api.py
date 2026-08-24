@@ -102,6 +102,10 @@ def _save_driver(session: Session, phone: str, payload: dict, actor: str) -> dic
         quiet_to=_int(payload, "quiet_to"),
         status=payload.get("status"),
         notes=payload.get("notes"),
+        terms_accepted=_bool(payload, "terms_accepted"),
+        terms_version=payload.get("terms_version"),
+        has_documents=_bool(payload, "has_documents"),
+        accepts_rides_limit=_bool(payload, "accepts_rides_limit"),
     )
     if isinstance(payload.get("areas"), list):
         drivers.set_areas(session, driver, [str(a) for a in payload["areas"]])
@@ -168,6 +172,12 @@ def driver_flash(driver_id: int, actor: Actor) -> dict:
         driver = session.get(db.Driver, driver_id)
         if driver is None:
             raise HTTPException(status_code=404, detail="no such driver")
+        area = driver.home_area or ""
+        if not area:
+            driver_areas = drivers.areas_of(session, driver)
+            if driver_areas:
+                area = driver_areas[0]
+        caller_id = db.area_outgoing_caller_id(session, area) or None
         base_url = db.public_base_url()
         try:
             result = pbx.campaign_broadcast(
@@ -176,6 +186,7 @@ def driver_flash(driver_id: int, actor: Actor) -> dict:
                 tender_id=None,
                 name=f"manual-driver-{driver.id}",
                 module_url=f"{base_url}/ivr/driver" if base_url else "",
+                caller_id=caller_id if caller_id else None,
             )
         except pbx.PbxError as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc

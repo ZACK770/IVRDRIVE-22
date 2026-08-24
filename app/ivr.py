@@ -383,6 +383,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
                     won.phone,
                     text=tts.AUDIO_TEXTS["driver_connect_offer"],
                     driver_id=driver.id,
+                    caller_id=db.area_outgoing_caller_id(session, won.area),
                 )
                 _save(row, "done", state)
                 return message("driver_won_callback")
@@ -471,6 +472,7 @@ def _driver_step(session: Session, params: dict[str, str]) -> dict:
                 text=tts.AUDIO_TEXTS["driver_connect_offer"],
                 driver_id=driver.id,
                 tender_id=tender.id if tender else None,
+                caller_id=db.area_outgoing_caller_id(session, tender.area if tender else None),
             )
         return message("driver_won_callback")
 

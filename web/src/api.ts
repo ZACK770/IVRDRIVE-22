@@ -131,6 +131,11 @@ export interface Driver {
   last_area: string | null;
   last_area_at: string | null;
   notes: string | null;
+  terms_accepted: boolean;
+  terms_accepted_at: string | null;
+  terms_version: string | null;
+  has_documents: boolean;
+  accepts_rides_limit: boolean;
 }
 
 export interface BoardArea {

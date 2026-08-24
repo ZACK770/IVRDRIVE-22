@@ -183,6 +183,7 @@ def connect_call(
     text: str,
     driver_id: int | None = None,
     tender_id: int | None = None,
+    caller_id: str | None = None,
 ) -> dict:
     """Ring the winning driver; when they answer they hear ``text`` and press
     1 to be bridged to the passenger (the documented CRM "agent connect"
@@ -205,18 +206,21 @@ def connect_call(
         return {"sent": False, "status": "debounced", "phone": driver_phone}
 
     status, note, campaign_id = "sent", None, None
+    params: dict[str, object] = {
+        "audioText": text,
+        "phones": [driver_phone],
+        "title": "חיבור נהג לנוסע",
+        "callLength": 25,
+        "dialRetries": 2,
+        "betweenRetries": 5,
+        "keysAction-1": f"routing-{passenger_phone}",
+    }
+    if caller_id:
+        params["callId"] = caller_id
     try:
         payload = _request(
             "campaignRun",
-            {
-                "audioText": text,
-                "phones": [driver_phone],
-                "title": "חיבור נהג לנוסע",
-                "callLength": 25,
-                "dialRetries": 2,
-                "betweenRetries": 5,
-                "keysAction-1": f"routing-{passenger_phone}",
-            },
+            params,
             endpoint="campaignApi.php",
             json_body=True,
         )
@@ -247,12 +251,16 @@ def connect_call(
 
 
 def voice_broadcast(
-    phones: list[str], *, name: str, module_url: str | None = None
+    phones: list[str],
+    *,
+    name: str,
+    module_url: str | None = None,
+    caller_id: str | None = None,
 ) -> dict:
     """Start a paid outbound campaign that can receive return calls.
 
-    Unlike ``makeCall``, this is a normal campaign call: the PBX presents its
-    configured campaign caller ID and the driver can call that number back.
+    Unlike ``makeCall``, this is a normal campaign call: the PBX presents the
+    supplied ``caller_id`` and the driver can call that number back.
     """
     if not phones:
         return {"started": False, "note": "אין נמענים"}
@@ -269,6 +277,8 @@ def voice_broadcast(
             "אין כתובת ציבורית למודול ה-IVR: הגדירו public_base_url כדי לשגר קמפיין"
         )
     params["apiUrl"] = module_url
+    if caller_id:
+        params["callId"] = db.normalize_phone(caller_id)
     payload = _request("campaignRun", params, endpoint="campaignApi.php", json_body=True)
     return {"started": True, "campaign_id": payload.get("campaignId"), "response": payload}
 
@@ -280,6 +290,7 @@ def campaign_broadcast(
     tender_id: int | None,
     name: str,
     module_url: str,
+    caller_id: str | None = None,
 ) -> dict:
     """Broadcast one tender campaign and record each recipient in the ledger."""
     pending = [
@@ -295,6 +306,7 @@ def campaign_broadcast(
             [phone for _, phone in pending],
             name=name,
             module_url=module_url,
+            caller_id=caller_id,
         )
     except PbxError as exc:
         for driver_id, phone in pending:

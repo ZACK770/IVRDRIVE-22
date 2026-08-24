@@ -35,6 +35,7 @@ from app import (
     ivr,
     ops_api,
     pbx,
+    public_api,
     scheduler,
 )
 
@@ -55,9 +56,155 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Technoline raw-channel probe", lifespan=lifespan)
 app.include_router(admin.router)
 app.include_router(api.router)
+app.include_router(public_api.router)
 app.include_router(ops_api.router)
 app.include_router(ivr.router)
 app.include_router(console_proxy.router)
+
+
+_DRIVER_REGISTER_PAGE = """<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>רישום נהג — דרייברים</title>
+<style>
+:root{--bg:#f8fafc;--panel:#fff;--text:#0f172a;--muted:#64748b;--border:#e2e8f0;--accent:#2563eb;--accent-dark:#1d4ed8;--danger:#dc2626;--success:#16a34a}
+*{box-sizing:border-box;font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+body{background:var(--bg);color:var(--text);margin:0;padding:1rem;line-height:1.6}
+.container{max-width:640px;margin:0 auto}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:1rem;padding:1.5rem;box-shadow:0 4px 6px -1px rgb(0 0 0 / 0.05)}
+h1{margin-top:0;font-size:1.5rem}
+.muted{color:var(--muted);font-size:.9rem}
+label{display:block;margin:.75rem 0 .25rem;font-weight:600}
+input[type="text"],input[type="tel"],input[type="number"]{width:100%;padding:.65rem .9rem;border:1px solid var(--border);border-radius:.5rem;font-size:1rem}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgb(37 99 235 / 0.1)}
+.areas{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:.5rem;margin-top:.5rem}
+.area-chip{cursor:pointer;border:1px solid var(--border);border-radius:999px;padding:.45rem .8rem;text-align:center;background:#fff;transition:.15s}
+.area-chip.selected{border-color:var(--accent);background:#eff6ff;color:var(--accent-dark)}
+.terms{border:1px solid var(--border);border-radius:.5rem;padding:1rem;background:#f9fafb;margin:1rem 0}
+.terms h2{font-size:1.1rem;margin-top:0}
+.terms ul{padding-right:1.2rem;margin:.5rem 0}
+.checkbox{display:flex;align-items:flex-start;gap:.5rem;margin:.6rem 0;cursor:pointer;font-weight:normal}
+.checkbox input{margin-top:.25rem;flex-shrink:0}
+button{width:100%;padding:.85rem;border:none;border-radius:.5rem;background:var(--accent);color:#fff;font-size:1.05rem;font-weight:600;cursor:pointer;margin-top:1rem}
+button:disabled{background:#94a3b8;cursor:not-allowed}
+.feedback{margin-top:1rem;padding:.8rem;border-radius:.5rem;text-align:center;display:none}
+.feedback.error{background:#fef2f2;color:var(--danger);border:1px solid #fecaca}
+.feedback.success{background:#f0fdf4;color:var(--success);border:1px solid #bbf7d0}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="card">
+    <h1>רישום נהג</h1>
+    <p class="muted">מלאו את הפרטים הבאים. הרישום נכנס לאישור משרד ורק לאחריו תוכלו לקבל הצעות נסיעה.</p>
+    <form id="regForm">
+      <label for="phone">טלפון נייד *</label>
+      <input id="phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="0501234567" required />
+
+      <label for="name">שם מלא *</label>
+      <input id="name" type="text" autocomplete="name" placeholder="ישראל ישראלי" required />
+
+      <label for="car_model">דגם הרכב *</label>
+      <input id="car_model" type="text" placeholder="לדוגמה: Mercedes Vito" required list="carModels" />
+      <datalist id="carModels"><option value="Mercedes Vito" /><option value="Volkswagen Caravelle" /><option value="Toyota Proace" /></datalist>
+
+      <label for="seats">מספר מושבים *</label>
+      <input id="seats" type="number" min="1" step="1" value="4" required />
+
+      <label>אזורי פעילות *</label>
+      <div id="areas" class="areas"><span class="muted">טוען אזורים...</span></div>
+
+      <div class="terms">
+        <h2>תנאי הצטרפות</h2>
+        <ul>
+          <li>אני מצהיר שבעבודתי כנהג/מפעיל רכב לצורך הסעות באמצעות המערכת, יש לי את כל המסמכים, הרשיונות, ההסמכות, הביטוחים והאישורים הנדרשים על פי חוק.</li>
+          <li>אני מבין שהמערכת היא פלטפורמת תיווך בלבד ואינה נושאת באחריות לפעילות הנסיעה עצמה; האחריות לביצוע נסיעות חוקי ובטוח מוטלת עליי בלבד.</li>
+          <li>אני מודע ומתחייב שלא לקחת יותר משתי נסיעות שיתופיות ביום, ולעקוב אחר כל הגבלה חוקית רלוונטית.</li>
+        </ul>
+        <label class="checkbox"><input type="checkbox" id="has_documents" required /><span>אני מאשר/ת שיש לי את כל המסמכים, הרשיונות, ההסמכות והביטוחים הדרושים.</span></label>
+        <label class="checkbox"><input type="checkbox" id="accepts_limit" required /><span>אני מודע/ת ומתחייב/ת שלא לקחת יותר משתי נסיעות שיתופיות ביום ולעקוב אחרי ההגבלות החוקיות.</span></label>
+        <label class="checkbox"><input type="checkbox" id="terms_accepted" required /><span>קראתי את התקנון ואני מסכים/מה לתנאיו, כולל פטור המערכת מאחריות.</span></label>
+      </div>
+
+      <button type="submit" id="submitBtn">שלח הרשמה</button>
+      <div id="feedback" class="feedback"></div>
+    </form>
+  </div>
+</div>
+<script>
+let selectedAreas = [];
+async function loadAreas(){
+  const res = await fetch('/api/public/areas');
+  const data = await res.json();
+  const container = document.getElementById('areas');
+  container.innerHTML = '';
+  if(!data.areas || data.areas.length === 0){ container.innerHTML = '<span class="muted">אין אזורים זמינים כרגע.</span>'; return; }
+  data.areas.forEach(name => {
+    const chip = document.createElement('div');
+    chip.className = 'area-chip';
+    chip.textContent = name;
+    chip.onclick = () => {
+      chip.classList.toggle('selected');
+      if(selectedAreas.includes(name)) selectedAreas = selectedAreas.filter(a => a !== name);
+      else selectedAreas.push(name);
+    };
+    container.appendChild(chip);
+  });
+}
+function showFeedback(text, ok){
+  const fb = document.getElementById('feedback');
+  fb.textContent = text;
+  fb.className = 'feedback ' + (ok ? 'success' : 'error');
+  fb.style.display = 'block';
+}
+function normalizePhone(v){ return v.replace(/\\D/g,''); }
+document.getElementById('regForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const phone = normalizePhone(document.getElementById('phone').value);
+  if(phone.length < 9 || phone.length > 11){ showFeedback('יש להזין מספר טלפון תקין.', false); return; }
+  if(selectedAreas.length === 0){ showFeedback('יש לבחור לפחות אזור אחד.', false); return; }
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'שולח...';
+  try{
+    const res = await fetch('/api/public/drivers', {
+      method: 'POST',
+      headers: {'content-type':'application/json'},
+      body: JSON.stringify({
+        phone,
+        name: document.getElementById('name').value.trim(),
+        car_model: document.getElementById('car_model').value.trim(),
+        seats: Number(document.getElementById('seats').value),
+        areas: selectedAreas,
+        terms_accepted: document.getElementById('terms_accepted').checked,
+        has_documents: document.getElementById('has_documents').checked,
+        accepts_rides_limit: document.getElementById('accepts_limit').checked,
+      })
+    });
+    const data = await res.json().catch(()=>({}));
+    if(res.ok){
+      showFeedback(data.message || 'ההרשמה התקבלה. תודה!', true);
+      document.getElementById('regForm').reset();
+      selectedAreas = [];
+      document.querySelectorAll('.area-chip').forEach(c => c.classList.remove('selected'));
+    } else {
+      showFeedback(data.detail || 'שגיאה בשליחת הטופס. נסו שוב.', false);
+    }
+  }catch(err){
+    showFeedback('שגיאת רשת. נסו שוב.', false);
+  } finally { btn.disabled = false; btn.textContent = 'שלח הרשמה'; }
+});
+loadAreas();
+</script>
+</body>
+</html>"""
+
+
+@app.get("/register/driver", response_class=HTMLResponse)
+def driver_register_page() -> HTMLResponse:
+    return HTMLResponse(_DRIVER_REGISTER_PAGE)
+
 
 #: The console runs as a separate Render service on its own domain, so the API
 #: has to name it explicitly. Comma-separated; `*` for local development.

@@ -9,6 +9,9 @@ type FormState = {
   car_model: string;
   seats: string;
   areas: string[];
+  has_documents: boolean;
+  accepts_rides_limit: boolean;
+  terms_accepted: boolean;
 };
 
 const initialForm: FormState = {
@@ -17,6 +20,9 @@ const initialForm: FormState = {
   car_model: "",
   seats: "4",
   areas: [],
+  has_documents: false,
+  accepts_rides_limit: false,
+  terms_accepted: false,
 };
 
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
@@ -58,6 +64,10 @@ export function DriverRegistration() {
       setError("מספר המושבים חייב להיות מספר שלם חיובי.");
       return;
     }
+    if (!form.has_documents || !form.accepts_rides_limit || !form.terms_accepted) {
+      setError("יש לאשר את כל סעיפי התקנון כדי להמשיך.");
+      return;
+    }
 
     setSubmitting(true);
     api
@@ -71,6 +81,10 @@ export function DriverRegistration() {
         status: "pending",
         smartphone: true,
         voice_offers: true,
+        has_documents: true,
+        accepts_rides_limit: true,
+        terms_accepted: true,
+        terms_version: "driver-1",
       })
       .then(() => {
         setForm(initialForm);
@@ -168,6 +182,44 @@ export function DriverRegistration() {
           ) : (
             <p className="muted">עדיין לא הוגדרו אזורים במערכת. ניתן להוסיף אותם במסך האזורים.</p>
           )}
+        </div>
+
+        <div className="form-section">
+          <h2>תנאי הצטרפות *</h2>
+          <p className="muted">
+            הנהג מאשר שהמערכת היא פלטפורמת תיווך בלבד ואינה נושאת באחריות
+            לפעילות הנסיעה עצמה. האחריות לביצוע נסיעות חוקי ובטוח, ולקיום כל
+            מסמך, רישיון, הסמכה וביטוח, מוטלת על הנהג בלבד.
+          </p>
+          <div className="terms-box">
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.has_documents}
+                onChange={(e) => setField("has_documents", e.target.checked)}
+              />
+              <span>יש לי את כל המסמכים, הרשיונות, ההסמכות והביטוחים הדרושים.</span>
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.accepts_rides_limit}
+                onChange={(e) => setField("accepts_rides_limit", e.target.checked)}
+              />
+              <span>
+                אני מודע ומתחייב שלא לקחת יותר משתי נסיעות שיתופיות ביום,
+                ולעקוב אחרי ההגבלות החוקיות.
+              </span>
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={form.terms_accepted}
+                onChange={(e) => setField("terms_accepted", e.target.checked)}
+              />
+              <span>קראתי את התקנון ואני מסכים/מה לתנאיו.</span>
+            </label>
+          </div>
         </div>
 
         <datalist id="registration-car-models">

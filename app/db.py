@@ -166,6 +166,15 @@ class Driver(Base):
     last_area_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
     notes: Mapped[str | None] = mapped_column(Text)
+    #: Driver self-registration terms acceptance. We store the version and
+    #: timestamp so we can prove when and which wording the driver agreed to.
+    terms_accepted: Mapped[bool] = mapped_column(Boolean, default=False)
+    terms_accepted_at: Mapped[datetime | None] = mapped_column(DateTime)
+    terms_version: Mapped[str | None] = mapped_column(String(16))
+    terms_ip: Mapped[str | None] = mapped_column(String(45))
+    #: Specific liability clauses the driver explicitly confirmed.
+    has_documents: Mapped[bool] = mapped_column(Boolean, default=False)
+    accepts_rides_limit: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class DriverArea(Base):
@@ -1006,6 +1015,8 @@ DEFAULT_SETTINGS: dict[str, str] = {
     #: Optional: where an approved caller is forwarded, e.g. the ordering line.
     #: Empty means the terms extension simply ends the call.
     "terms_next_phone": "",
+    #: Fallback outbound caller ID for campaigns when an area has none.
+    "outgoing_caller_id": "",
 }
 
 
@@ -1046,6 +1057,23 @@ def setting_float(key: str) -> float:
         return float(get_setting(key))
     except ValueError:
         return float(DEFAULT_SETTINGS.get(key, "0"))
+
+
+def area_outgoing_caller_id(session, area: str | None) -> str | None:
+    """The PBX caller ID / callback number assigned to an area."""
+    def _default() -> str | None:
+        value = session.scalars(
+            select(Setting.value).where(Setting.key == "outgoing_caller_id")
+        ).first()
+        return (value or "").strip() or None
+
+    if not area:
+        return _default()
+    row = session.scalars(
+        select(Area.callback_number).where(Area.name == area)
+    ).first()
+    value = str(row) if row is not None else _default()
+    return value.strip() if value else None
 
 
 def log_action(

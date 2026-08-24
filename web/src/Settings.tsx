@@ -18,6 +18,7 @@ const LABELS: Record<string, string> = {
   terms_bonus_points: "מענק הצטרפות (נקודות)",
   terms_version: "גרסת תקנון",
   terms_next_phone: "העברה אחרי אישור תקנון (טלפון/שלוחה)",
+  outgoing_caller_id: "מספר יוצא ברירת מחדל (CID)",
 };
 
 export function Settings() {
