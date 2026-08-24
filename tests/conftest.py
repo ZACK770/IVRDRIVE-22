@@ -27,6 +27,9 @@ from app import db  # noqa: E402  (must follow the env setup above)
 def clean_db() -> Iterator[None]:
     db.Base.metadata.drop_all(db.engine)
     db.Base.metadata.create_all(db.engine)
+    # Outbound campaigns hand the PBX a callback URL, so a deployment without
+    # one cannot dial at all; tests run as a configured deployment does.
+    db.set_setting("public_base_url", "https://tests.local")
     yield
 
 

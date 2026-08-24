@@ -275,6 +275,24 @@ class PointsEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
 
+class TermsConsent(Base):
+    """One row per phone that approved the joining terms on the phone line.
+
+    The row is the legal record of the approval — which wording version was in
+    force, from which call — so it is written once and never edited.
+    """
+
+    __tablename__ = "terms_consents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    phone: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    version: Mapped[str] = mapped_column(String(16), default="1", index=True)
+    channel: Mapped[str] = mapped_column(String(24), default="ivr")
+    call_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    points_granted: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
+
+
 class Referral(Base):
     """'Share and ride': a caller names a number, that number confirms by
     ringing in within 24 hours, and rides it makes for the next 30 days earn
@@ -981,6 +999,13 @@ DEFAULT_SETTINGS: dict[str, str] = {
     "auto_tender": "1",
     #: Stop a paid voice campaign once this many calls have been answered.
     "voice_campaign_stop_answered": "30",
+    #: The joining grant a caller receives for approving the terms, once per phone.
+    "terms_bonus_points": "50",
+    #: Wording in force. Bumping it lets the line ask existing callers again.
+    "terms_version": "1",
+    #: Optional: where an approved caller is forwarded, e.g. the ordering line.
+    #: Empty means the terms extension simply ends the call.
+    "terms_next_phone": "",
 }
 
 

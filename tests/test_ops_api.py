@@ -59,7 +59,7 @@ def test_the_dispatcher_can_open_a_filtered_tender(client):
         json={"area": "ירושלים", "filters": {"min_car_year": 2020}, "window_seconds": 30},
     ).json()
 
-    assert (result["eligible"], result["flash"]) == (1, 1)
+    assert (result["eligible"], result["campaign"]) == (1, 1)
     listing = client.get("/api/tenders").json()["tenders"][0]
     assert listing["filters"] == {"min_car_year": 2020}
     assert listing["notified"] == 1
@@ -81,7 +81,7 @@ def test_an_order_taken_at_the_desk_can_ring_the_drivers_at_once(client):
         headers={"X-Actor": "sara"},
     ).json()
 
-    assert created["tender"]["flash"] == 1
+    assert created["tender"]["campaign"] == 1
     assert client.post("/api/orders", json={"phone": "0529999999"}).status_code == 422
 
 

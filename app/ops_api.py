@@ -20,7 +20,18 @@ from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import accounting, db, dispatch, drivers, loyalty, notify, pbx, ratings, referrals
+from app import (
+    accounting,
+    db,
+    dispatch,
+    drivers,
+    loyalty,
+    notify,
+    pbx,
+    ratings,
+    referrals,
+    terms,
+)
 from app.api import require_token
 
 router = APIRouter(prefix="/api", tags=["ops"], dependencies=[Depends(require_token)])
@@ -751,6 +762,42 @@ def create_expense(payload: Payload, actor: Actor) -> dict:
         if payload.get("spent_on"):
             row.spent_on = datetime.fromisoformat(str(payload["spent_on"]))
         return {"id": row.id}
+
+
+# -------------------------------------------------------------------- terms
+
+
+@router.get("/terms")
+def terms_overview(limit: int = 200) -> dict:
+    """The wording in force, the grant it pays, and who approved it."""
+    with db.session_scope() as session:
+        return {
+            "version": terms.version(),
+            "bonus_points": terms.bonus_points(),
+            "next_phone": db.get_setting("terms_next_phone"),
+            "consents": terms.recent(session, limit=limit),
+        }
+
+
+@router.get("/terms/status")
+def terms_status(phone: str) -> dict:
+    """Whether this phone still owes an approval — what the routing extension
+    asks before deciding where to send the caller."""
+    with db.session_scope() as session:
+        return terms.status(session, phone)
+
+
+@router.post("/terms/accept")
+def terms_accept(payload: Payload, actor: Actor) -> dict:
+    """Record an approval taken outside the phone line, e.g. by a dispatcher."""
+    phone = str(payload.get("phone") or "").strip()
+    if not phone:
+        raise HTTPException(status_code=422, detail="phone is required")
+    with db.session_scope() as session:
+        result = terms.accept(session, phone, channel=f"console:{actor}")
+        if not result["accepted"]:
+            raise HTTPException(status_code=422, detail=result.get("error") or "לא ניתן לאשר")
+        return result
 
 
 # ---------------------------------------------------------- log & settings

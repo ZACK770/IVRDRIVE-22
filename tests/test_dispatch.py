@@ -35,27 +35,32 @@ def test_blast_rings_every_eligible_driver_once(session):
 
     assert result["ok"] is True
     assert result["eligible"] == 2
-    assert result["flash"] == 2
+    assert result["campaign"] == 2
     calls = session.scalars(db.select(db.FlashCall)).all()
     assert {c.status for c in calls} == {"dry_run"}
+    assert {c.kind for c in calls} == {"campaign"}
 
 
-def test_a_paid_driver_gets_a_campaign_and_not_a_flash_call(session, monkeypatch):
+def test_every_driver_is_reached_by_one_returnable_campaign(session, monkeypatch):
     make_driver(session, "0521111111", voice_offers=True)
     make_driver(session, "0522222222")
     seen: list[list[str]] = []
     monkeypatch.setattr(
-        pbx, "voice_broadcast", lambda phones, **kw: seen.append(phones) or {"started": True}
+        pbx,
+        "voice_broadcast",
+        lambda phones, **kw: seen.append(phones) or {"started": True, "campaign_id": "7"},
     )
 
     result = dispatch.open_tender(session, make_order(session), area="ירושלים")
 
-    assert (result["voice"], result["flash"]) == (1, 1)
-    assert seen == [["0521111111"]]
-    assert [c.phone for c in session.scalars(db.select(db.FlashCall)).all()] == ["0522222222"]
+    # One campaign, everyone in it: a driver can ring the campaign number back.
+    assert seen == [["0521111111", "0522222222"]]
+    assert (result["voice"], result["campaign_id"]) == (2, "7")
+    tender = session.scalars(db.select(db.Tender)).first()
+    assert tender.campaign_id == "7"
 
 
-def test_a_campaign_that_will_not_start_falls_back_to_a_flash_call(session, monkeypatch):
+def test_a_campaign_that_will_not_start_is_reported_not_hidden(session, monkeypatch):
     make_driver(session, "0521111111", voice_offers=True)
 
     def refuse(phones, **kwargs):
@@ -65,8 +70,10 @@ def test_a_campaign_that_will_not_start_falls_back_to_a_flash_call(session, monk
 
     result = dispatch.open_tender(session, make_order(session), area="ירושלים")
 
-    assert (result["voice"], result["flash"]) == (0, 1)
-    assert [c.phone for c in session.scalars(db.select(db.FlashCall)).all()] == ["0521111111"]
+    assert (result["voice"], result["campaign"]) == (0, 0)
+    assert result["error"] == "access denied"
+    failed = session.scalars(db.select(db.FlashCall)).all()
+    assert [(c.phone, c.status) for c in failed] == [("0521111111", "failed")]
 
 
 def test_a_second_ring_inside_the_debounce_is_not_sent(session):

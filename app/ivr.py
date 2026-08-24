@@ -33,7 +33,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import db, dispatch, drivers, loyalty, pbx, ratings, referrals, tts
+from app import db, dispatch, drivers, loyalty, pbx, ratings, referrals, terms, tts
 
 log = logging.getLogger("ivr")
 
@@ -70,6 +70,11 @@ DEFAULT_AUDIO = {
     "passenger_prefs": "club_prefs",
     "rating_prompt": "rating_prompt",
     "rating_thanks": "rating_thanks",
+    "terms_intro": "terms_intro",
+    "terms_full": "terms_full",
+    "terms_accepted": "terms_accepted",
+    "terms_already": "terms_already",
+    "terms_declined": "terms_declined",
     "error": "system_error",
 }
 
@@ -855,6 +860,98 @@ def _passenger_step(session: Session, params: dict[str, str]) -> dict:
 
     _save(row, "menu", state)
     return menu("passenger_menu", keys="1,2,3,4")
+
+
+# --------------------------------------------------------------- terms line
+
+
+@router.api_route("/terms", methods=["GET", "POST"])
+async def terms_line(request: Request) -> JSONResponse:
+    """Standalone extension: approve the joining terms, get the joining grant.
+
+    Kept out of the other lines so the office can point any extension at it and
+    decide separately which callers are sent through.
+    """
+    params = call_params(request)
+    try:
+        with db.session_scope() as session:
+            body = _terms_step(session, params)
+    except Exception:
+        log.exception("terms IVR failed for %s", params)
+        body = message("error")
+    log.info("ivr/terms request=%s response=%s", params, json.dumps(body, ensure_ascii=False))
+    return JSONResponse(body)
+
+
+def _terms_intro_menu(points: int) -> dict:
+    return menu(
+        "terms_intro",
+        keys="1,2",
+        text=tts.AUDIO_TEXTS["terms_intro"].format(points=points),
+    )
+
+
+def _terms_after_accept(session: Session, caller: str, call_id: str) -> dict:
+    result = terms.accept(session, caller, call_id=call_id or None)
+    if not result["accepted"]:
+        return say(tts.AUDIO_TEXTS["terms_declined"])
+    if result["already"]:
+        spoken = tts.AUDIO_TEXTS["terms_already"].format(balance=result["balance"])
+    else:
+        spoken = tts.AUDIO_TEXTS["terms_accepted"].format(
+            points=result["granted"], balance=result["balance"]
+        )
+    # The forwarding itself happens on the next callback, once the PBX has
+    # finished playing this message; see the ``done`` branch below.
+    return say(spoken)
+
+
+def _terms_step(session: Session, params: dict[str, str]) -> dict:
+    caller = db.normalize_phone(params["caller"]) if params["caller"] else ""
+    row = _session_row(session, params["call_id"] or caller, caller)
+    state = _state(row)
+    dtmf = params["dtmf"]
+    points = terms.bonus_points()
+
+    if row.step == "done":
+        forward = db.get_setting("terms_next_phone")
+        if forward and state.get("forward"):
+            # Cleared first, so a second callback hangs up instead of redialling.
+            state["forward"] = False
+            _save(row, "done", state)
+            return route(forward)
+        return hangup()
+
+    if row.step == "start":
+        _save(row, "intro", state)
+        return _terms_intro_menu(points)
+
+    if row.step == "intro":
+        if dtmf == "1":
+            state["forward"] = bool(db.get_setting("terms_next_phone"))
+            _save(row, "done", state)
+            return _terms_after_accept(session, caller, params["call_id"])
+        if dtmf == "2":
+            _save(row, "read", state)
+            return menu(
+                "terms_full",
+                keys="1",
+                tries=1,
+                timeout=15,
+                text=tts.AUDIO_TEXTS["terms_full"],
+            )
+        return _terms_intro_menu(points)
+
+    if row.step == "read":
+        if dtmf == "1":
+            state["forward"] = bool(db.get_setting("terms_next_phone"))
+            _save(row, "done", state)
+            return _terms_after_accept(session, caller, params["call_id"])
+        _save(row, "done", state)
+        return say(tts.AUDIO_TEXTS["terms_declined"])
+
+    _save(row, "intro", state)
+    return _terms_intro_menu(points)
 
 
 # -------------------------------------------------------------- rating line
