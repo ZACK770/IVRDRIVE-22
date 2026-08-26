@@ -13,6 +13,8 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
+import psycopg
+from psycopg.rows import dict_row
 
 
 BASELINE_AMOUNT = 400_000
@@ -34,7 +36,28 @@ def database_path() -> Path:
     return path
 
 
+def database_url() -> str:
+    return os.getenv("BOT_DB_URL") or os.getenv("DATABASE_URL") or ""
+
+
 def initialize_database() -> None:
+    if database_url():
+        with psycopg.connect(database_url()) as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS mortgage_leads (
+                    id BIGSERIAL PRIMARY KEY,
+                    phone_number TEXT NOT NULL DEFAULT '',
+                    mortgage_amount BIGINT NOT NULL CHECK (mortgage_amount > 0),
+                    years_since_origination INTEGER NOT NULL,
+                    original_term_years INTEGER NOT NULL,
+                    remaining_years INTEGER NOT NULL,
+                    estimated_savings BIGINT NOT NULL,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        return
     with sqlite3.connect(database_path()) as connection:
         connection.execute(
             """
@@ -66,6 +89,34 @@ def initialize_database() -> None:
 
 def estimate_savings(mortgage_amount: int, remaining_years: int) -> int:
     return round(mortgage_amount * remaining_years * SAVINGS_RATE)
+
+
+def insert_lead(
+    caller: str, amount: int, elapsed: int, term: int, remaining: int, savings: int
+) -> None:
+    values = (caller, amount, elapsed, term, remaining, savings)
+    if database_url():
+        with psycopg.connect(database_url()) as connection:
+            connection.execute(
+                """
+                INSERT INTO mortgage_leads (
+                    phone_number, mortgage_amount, years_since_origination,
+                    original_term_years, remaining_years, estimated_savings
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+                """,
+                values,
+            )
+        return
+    with sqlite3.connect(database_path()) as connection:
+        connection.execute(
+            """
+            INSERT INTO leads (
+                phone_number, mortgage_amount, years_since_origination,
+                original_term_years, remaining_years, estimated_savings, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (*values, datetime.now(UTC).isoformat()),
+        )
 
 
 def twiml(message: str, gather_prompt: str = "") -> Response:
@@ -260,25 +311,7 @@ async def mortgage_start(request: Request) -> JSONResponse:
         term = int(values["term"])
         remaining = term - elapsed
         savings = estimate_savings(amount, remaining)
-        with sqlite3.connect(database_path()) as connection:
-            connection.execute(
-                """
-                INSERT INTO leads (
-                    phone_number, mortgage_amount, years_since_origination,
-                    original_term_years, remaining_years, estimated_savings,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    caller,
-                    amount,
-                    elapsed,
-                    term,
-                    remaining,
-                    savings,
-                    datetime.now(UTC).isoformat(),
-                ),
-            )
+        insert_lead(caller, amount, elapsed, term, remaining, savings)
         return JSONResponse(
             module_message(
                 "\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd "
@@ -425,6 +458,17 @@ async def mortgage_lead(
 
 
 def lead_rows() -> list[dict[str, Any]]:
+    if database_url():
+        with psycopg.connect(database_url(), row_factory=dict_row) as connection:
+            rows = connection.execute(
+                """
+                SELECT id, phone_number, mortgage_amount,
+                       years_since_origination, original_term_years,
+                       remaining_years, estimated_savings, created_at
+                FROM mortgage_leads ORDER BY id DESC
+                """
+            ).fetchall()
+        return [dict(row) for row in rows]
     with sqlite3.connect(database_path()) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
