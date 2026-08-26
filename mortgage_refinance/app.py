@@ -401,9 +401,14 @@ async def mortgage_start(request: Request) -> JSONResponse:
             values.get("confirm", ""), "in_progress"
         )
     )
-    save_lead_state(
-        call_id, caller, amount, elapsed, term, remaining, savings, status
-    )
+    if (
+        any(value is not None for value in (amount, elapsed, term))
+        or values.get("confirm")
+        or status == "disconnected"
+    ):
+        save_lead_state(
+            call_id, caller, amount, elapsed, term, remaining, savings, status
+        )
     if values.get("confirm") == "1":
         return JSONResponse(
             module_message(
