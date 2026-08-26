@@ -2,7 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /app
 COPY pyproject.toml .
+COPY main.py .
 COPY mortgage_refinance ./mortgage_refinance
 RUN pip install --no-cache-dir .
 
-CMD ["uvicorn", "mortgage_refinance.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
