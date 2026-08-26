@@ -143,7 +143,7 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@app.post("/voice/mortgage")
+@app.api_route("/voice/mortgage", methods=["GET", "POST"])
 async def mortgage_start(request: Request) -> Response:
     return twiml(
         "",
