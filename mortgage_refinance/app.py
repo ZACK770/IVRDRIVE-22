@@ -7,6 +7,7 @@ import sqlite3
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -47,6 +48,18 @@ def initialize_database() -> None:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ivr_sessions (
+                call_id TEXT PRIMARY KEY,
+                caller TEXT NOT NULL,
+                step TEXT NOT NULL,
+                amount INTEGER,
+                elapsed INTEGER,
+                term INTEGER
+            )
+            """
+        )
 
 
 def estimate_savings(mortgage_amount: int, remaining_years: int) -> int:
@@ -76,6 +89,91 @@ def gather(action: str, prompt: str, num_digits: str = "") -> str:
 
 def action_path(path: str) -> str:
     return f"{ROUTE_PREFIX}{path}"
+
+
+def module_message(text: str) -> dict[str, Any]:
+    return {"type": "simpleMessage", "files": [{"text": text}]}
+
+
+def module_digits(*, min_digits: int = 1, max_digits: int = 10) -> dict[str, Any]:
+    return {
+        "type": "getDTMF",
+        "name": "dtmf",
+        "min": min_digits,
+        "max": max_digits,
+        "timeout": 8,
+    }
+
+
+def module_menu(text: str) -> dict[str, Any]:
+    return {
+        "type": "simpleMenu",
+        "name": "dtmf",
+        "enabledKeys": "1,2",
+        "times": 2,
+        "timeout": 8,
+        "setMusic": "no",
+        "files": [{"text": text}],
+    }
+
+
+def module_params(request: Request) -> tuple[str, str, str]:
+    values = {key.lower(): value for key, value in request.query_params.items()}
+    dtmf = next(
+        (
+            values[key]
+            for key in ("dtmf", "digits", "input", "value", "")
+            if values.get(key)
+        ),
+        "",
+    )
+    call_id = next(
+        (
+            values[key]
+            for key in ("pbxcallid", "callid", "call_id", "uniqueid", "id")
+            if values.get(key)
+        ),
+        "",
+    )
+    caller = next(
+        (
+            values[key]
+            for key in ("pbxphone", "caller", "phone", "callerid", "from")
+            if values.get(key)
+        ),
+        "",
+    )
+    return call_id or caller, caller, dtmf
+
+
+def module_session(call_id: str, caller: str) -> tuple[str, int | None, int | None, int | None]:
+    with sqlite3.connect(database_path()) as connection:
+        row = connection.execute(
+            "SELECT step, amount, elapsed, term FROM ivr_sessions WHERE call_id = ?",
+            (call_id,),
+        ).fetchone()
+    return row if row else ("start", None, None, None)
+
+
+def save_module_session(
+    call_id: str,
+    caller: str,
+    step: str,
+    amount: int | None = None,
+    elapsed: int | None = None,
+    term: int | None = None,
+) -> None:
+    with sqlite3.connect(database_path()) as connection:
+        connection.execute(
+            """
+            INSERT INTO ivr_sessions (call_id, caller, step, amount, elapsed, term)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(call_id) DO UPDATE SET
+                caller=excluded.caller, step=excluded.step,
+                amount=excluded.amount, elapsed=excluded.elapsed, term=excluded.term
+            """,
+            (call_id, caller, step, amount, elapsed, term),
+        )
 
 
 AMOUNT_PROMPT = (
@@ -149,14 +247,88 @@ def health() -> dict[str, str]:
 
 
 @app.api_route("/voice/mortgage", methods=["GET", "POST"])
-async def mortgage_start(request: Request) -> Response:
-    return twiml(
-        "",
-        gather(
-            action_path("/voice/mortgage/amount"),
-            AMOUNT_PROMPT,
-        ),
-    )
+async def mortgage_start(request: Request) -> JSONResponse:
+    call_id, caller, dtmf = module_params(request)
+    step, amount, elapsed, term = module_session(call_id, caller)
+
+    if step == "start":
+        save_module_session(call_id, caller, "wait_amount")
+        return JSONResponse(module_message(AMOUNT_PROMPT))
+    if step == "wait_amount":
+        save_module_session(call_id, caller, "amount")
+        return JSONResponse(module_digits(max_digits=10))
+    if step == "amount":
+        if not dtmf.isdigit() or int(dtmf) <= 0:
+            return JSONResponse(module_message(INVALID_AMOUNT_PROMPT))
+        amount = int(dtmf)
+        save_module_session(call_id, caller, "wait_elapsed", amount=amount)
+        return JSONResponse(module_message(ELAPSED_PROMPT))
+    if step == "wait_elapsed":
+        save_module_session(call_id, caller, "elapsed", amount=amount)
+        return JSONResponse(module_digits(max_digits=2))
+    if step == "elapsed":
+        if not dtmf.isdigit() or not 0 <= int(dtmf) <= 50:
+            return JSONResponse(module_message(INVALID_ELAPSED_PROMPT))
+        elapsed = int(dtmf)
+        save_module_session(call_id, caller, "wait_term", amount=amount, elapsed=elapsed)
+        return JSONResponse(module_message(TERM_PROMPT))
+    if step == "wait_term":
+        save_module_session(call_id, caller, "term", amount=amount, elapsed=elapsed)
+        return JSONResponse(module_digits(max_digits=2))
+    if step == "term":
+        if (
+            not dtmf.isdigit()
+            or not 1 <= int(dtmf) <= 50
+            or int(dtmf) <= int(elapsed or 0)
+        ):
+            return JSONResponse(module_message(INVALID_TERM_PROMPT))
+        term = int(dtmf)
+        remaining = term - int(elapsed or 0)
+        savings = estimate_savings(int(amount or 0), remaining)
+        save_module_session(
+            call_id, caller, "lead", amount=amount, elapsed=elapsed, term=term
+        )
+        return JSONResponse(
+            module_menu(SAVINGS_PROMPT.format(savings=savings))
+        )
+    if step == "lead":
+        if dtmf == "1":
+            remaining = int(term or 0) - int(elapsed or 0)
+            savings = estimate_savings(int(amount or 0), remaining)
+            with sqlite3.connect(database_path()) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO leads (
+                        phone_number, mortgage_amount, years_since_origination,
+                        original_term_years, remaining_years, estimated_savings,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        caller,
+                        amount,
+                        elapsed,
+                        term,
+                        remaining,
+                        savings,
+                        datetime.now(UTC).isoformat(),
+                    ),
+                )
+            save_module_session(call_id, caller, "done", amount, elapsed, term)
+            return JSONResponse(
+                module_message(
+                    "\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd "
+                    "\u05e0\u05e7\u05dc\u05d8\u05d5. \u05e0\u05e6\u05d9\u05d2 \u05d9\u05d7\u05d6\u05d5\u05e8 "
+                    "\u05d0\u05dc\u05d9\u05da \u05d1\u05d4\u05e7\u05d3\u05dd."
+                )
+            )
+        save_module_session(call_id, caller, "done", amount, elapsed, term)
+        return JSONResponse(
+            module_message(
+                "\u05ea\u05d5\u05d3\u05d4 \u05e9\u05d4\u05ea\u05e7\u05e9\u05e8\u05ea."
+            )
+        )
+    return JSONResponse({"type": "hangup"})
 
 
 @app.post("/voice/mortgage/amount")
