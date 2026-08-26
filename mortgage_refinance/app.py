@@ -485,7 +485,14 @@ def lead_rows() -> list[dict[str, Any]]:
                 FROM mortgage_leads ORDER BY id DESC
                 """
             ).fetchall()
-        return [dict(row) for row in rows]
+        normalized_rows = []
+        for row in rows:
+            item = dict(row)
+            created_at = item["created_at"]
+            if isinstance(created_at, datetime):
+                item["created_at"] = created_at.isoformat()
+            normalized_rows.append(item)
+        return normalized_rows
     with sqlite3.connect(database_path()) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
