@@ -99,8 +99,8 @@ def module_digits(*, min_digits: int = 1, max_digits: int = 10) -> dict[str, Any
     return {
         "type": "getDTMF",
         "name": "dtmf",
-        "min": min_digits,
-        "max": max_digits,
+        "min_digits": min_digits,
+        "max_digits": max_digits,
         "timeout": 8,
     }
 
@@ -109,10 +109,11 @@ def module_menu(text: str) -> dict[str, Any]:
     return {
         "type": "simpleMenu",
         "name": "dtmf",
-        "enabledKeys": "1,2",
-        "times": 2,
+        "enabled_keys": "1,2",
+        "min_digits": 1,
+        "max_digits": 1,
+        "tries": 2,
         "timeout": 8,
-        "setMusic": "no",
         "files": [{"text": text}],
     }
 
