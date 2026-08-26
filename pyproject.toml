@@ -1,0 +1,13 @@
+[project]
+name = "mortgage-refinance-ivr"
+version = "1.0.0"
+description = "Standalone Hebrew IVR mortgage refinance opportunity calculator"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "python-multipart==0.0.20",
+    "uvicorn[standard]==0.34.0",
+]
+
+[tool.uvicorn]
+factory = false
