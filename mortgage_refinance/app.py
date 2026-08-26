@@ -10,12 +10,12 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 BASELINE_AMOUNT = 400_000
 BASELINE_YEARS = 20
-BASELINE_SAVINGS = 150_000
+BASELINE_SAVINGS = 100_000
 SAVINGS_RATE = BASELINE_SAVINGS / BASELINE_AMOUNT / BASELINE_YEARS
 
 app = FastAPI(
     title="Mortgage Refinance Opportunity Calculator",
-    description="Standalone IVR calculator and lead capture service.",
+    description="Standalone Hebrew IVR calculator and lead capture service.",
     version="1.0.0",
 )
 
@@ -34,6 +34,8 @@ def initialize_database() -> None:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 phone_number TEXT,
                 mortgage_amount INTEGER NOT NULL,
+                years_since_origination INTEGER NOT NULL,
+                original_term_years INTEGER NOT NULL,
                 remaining_years INTEGER NOT NULL,
                 estimated_savings INTEGER NOT NULL,
                 created_at TEXT NOT NULL
@@ -46,8 +48,11 @@ def estimate_savings(mortgage_amount: int, remaining_years: int) -> int:
     return round(mortgage_amount * remaining_years * SAVINGS_RATE)
 
 
-def twiml(message: str, gather: str = "") -> Response:
-    body = f'<?xml version="1.0" encoding="UTF-8"?><Response>{message}{gather}</Response>'
+def twiml(message: str, gather_prompt: str = "") -> Response:
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?><Response>'
+        f"{message}{gather_prompt}</Response>"
+    )
     return Response(content=body, media_type="application/xml")
 
 
@@ -80,7 +85,8 @@ def home() -> str:
         <p>שירות IVR עצמאי לחישוב חיסכון משוער ולשמירת לידים.</p>
         <p>הגדר את כתובת ה-POST של ספק הטלפוניה לכתובת
         <strong>/voice/mortgage</strong>.</p>
-        <p>לבדיקת לידים: <a href="/leads">/leads</a></p>
+        <p>לצפייה בכל הנתונים המדויקים שהלקוחות הזינו:
+        <a href="/leads">/leads</a></p>
       </body>
     </html>
     """
@@ -97,7 +103,8 @@ async def mortgage_start(request: Request) -> Response:
         "",
         gather(
             "/voice/mortgage/amount",
-            "מהו סכום המשכנתא שלקחת? הקש את הסכום המלא במספרים, ולסיום הקש סולמית.",
+            "\u05de\u05d4\u05d5 \u05e1\u05db\u05d5\u05dd \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0 \u05e9\u05dc\u05e7\u05d7\u05ea? "
+            "\u05d4\u05e7\u05e9 \u05d0\u05ea \u05d4\u05e1\u05db\u05d5\u05dd \u05d4\u05de\u05dc\u05d0 \u05d1\u05de\u05e1\u05e4\u05e8\u05d9\u05dd, \u05d5\u05dc\u05e1\u05d9\u05d5\u05dd \u05d4\u05e7\u05e9 \u05e1\u05d5\u05dc\u05de\u05d9\u05ea.",
         ),
     )
 
@@ -108,41 +115,69 @@ async def mortgage_amount(request: Request) -> Response:
     amount = form.get("Digits", "")
     if not str(amount).isdigit() or int(amount) <= 0:
         return twiml(
+            "",
             gather(
                 "/voice/mortgage/amount",
-                "הסכום לא נקלט. הקש את סכום המשכנתא במספרים, ולסיום הקש סולמית.",
-            )
+                "\u05d4\u05e1\u05db\u05d5\u05dd \u05dc\u05d0 \u05e0\u05e7\u05dc\u05d8. \u05d4\u05e7\u05e9 \u05d0\u05ea \u05e1\u05db\u05d5\u05dd \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0 \u05d1\u05de\u05e1\u05e4\u05e8\u05d9\u05dd.",
+            ),
         )
     return twiml(
         "",
         gather(
-            f"/voice/mortgage/years?amount={int(amount)}",
-            "כמה שנים נותרו לך עד לסיום תשלום המשכנתא? הקש את מספר השנים.",
+            f"/voice/mortgage/elapsed?amount={int(amount)}",
+            "\u05e0\u05d0 \u05d4\u05e7\u05e9 \u05dc\u05e4\u05e0\u05d9 \u05db\u05de\u05d4 \u05e9\u05e0\u05d9\u05dd \u05d4\u05d5\u05e6\u05d0\u05ea \u05d0\u05ea \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0.",
         ),
     )
 
 
-@app.post("/voice/mortgage/years")
-async def mortgage_years(request: Request, amount: int) -> Response:
+@app.post("/voice/mortgage/elapsed")
+async def mortgage_elapsed(request: Request, amount: int) -> Response:
     form = await request.form()
-    years = form.get("Digits", "")
-    if not str(years).isdigit() or not 1 <= int(years) <= 50:
+    elapsed = form.get("Digits", "")
+    if not str(elapsed).isdigit() or not 0 <= int(elapsed) <= 50:
         return twiml(
+            "",
             gather(
-                f"/voice/mortgage/years?amount={amount}",
-                "מספר השנים לא נקלט. הקש מספר בין 1 ל-50.",
-            )
+                f"/voice/mortgage/elapsed?amount={amount}",
+                "\u05de\u05e1\u05e4\u05e8 \u05d4\u05e9\u05e0\u05d9\u05dd \u05dc\u05d0 \u05e0\u05e7\u05dc\u05d8. \u05e0\u05d0 \u05d4\u05e7\u05e9 \u05dc\u05e4\u05e0\u05d9 \u05db\u05de\u05d4 \u05e9\u05e0\u05d9\u05dd \u05d4\u05d5\u05e6\u05d0\u05ea \u05d0\u05ea \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0.",
+            ),
         )
-    savings = estimate_savings(amount, int(years))
+    return twiml(
+        "",
+        gather(
+            f"/voice/mortgage/term?amount={amount}&elapsed={int(elapsed)}",
+            "\u05e0\u05d0 \u05d4\u05e7\u05e9 \u05dc\u05db\u05de\u05d4 \u05e9\u05e0\u05d9\u05dd \u05d4\u05d9\u05ea\u05d4 \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0 \u05e9\u05dc\u05e7\u05d7\u05ea.",
+        ),
+    )
+
+
+@app.post("/voice/mortgage/term")
+async def mortgage_term(request: Request, amount: int, elapsed: int) -> Response:
+    form = await request.form()
+    term = form.get("Digits", "")
+    if (
+        not str(term).isdigit()
+        or not 1 <= int(term) <= 50
+        or int(elapsed) >= int(term)
+    ):
+        return twiml(
+            "",
+            gather(
+                f"/voice/mortgage/term?amount={amount}&elapsed={elapsed}",
+                "\u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05dc\u05d0 \u05e0\u05e7\u05dc\u05d8\u05d5. \u05ea\u05e7\u05d5\u05e4\u05ea \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0 \u05d7\u05d9\u05d9\u05d1\u05ea \u05dc\u05d4\u05d9\u05d5\u05ea \u05d2\u05d3\u05d5\u05dc\u05d4 \u05de\u05de\u05e1\u05e4\u05e8 \u05d4\u05e9\u05e0\u05d9\u05dd \u05e9\u05e2\u05d1\u05e8\u05d5. \u05e0\u05d0 \u05d4\u05e7\u05e9 \u05dc\u05db\u05de\u05d4 \u05e9\u05e0\u05d9\u05dd \u05d4\u05d9\u05ea\u05d4 \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0.",
+            ),
+        )
+    remaining = int(term) - elapsed
+    savings = estimate_savings(amount, remaining)
     prompt = (
-        f"וואו! ייתכן מאוד שאתה יכול לחסוך כ-{savings:,} שקלים "
-        "ממחזור המשכנתא. לפרטים נוספים הקש 1, לסיום הקש 2."
+        f"\u05d5\u05d5\u05d0\u05d5! \u05d9\u05d9\u05ea\u05db\u05df \u05de\u05d0\u05d5\u05d3 \u05e9\u05d0\u05ea\u05d4 \u05d9\u05db\u05d5\u05dc \u05dc\u05d7\u05e1\u05d5\u05da \u05db-{savings:,} \u05e9\u05e7\u05dc\u05d9\u05dd "
+        "\u05de\u05de\u05d7\u05d6\u05d5\u05e8 \u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0. \u05dc\u05e4\u05e8\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd \u05d4\u05e7\u05e9 1, \u05dc\u05e1\u05d9\u05d5\u05dd \u05d4\u05e7\u05e9 2."
     )
     return twiml(
         "",
         gather(
-            f"/voice/mortgage/lead?amount={amount}&years={int(years)}"
-            f"&savings={savings}",
+            f"/voice/mortgage/lead?amount={amount}&elapsed={elapsed}"
+            f"&term={int(term)}&remaining={remaining}&savings={savings}",
             prompt,
             num_digits="1",
         ),
@@ -151,28 +186,40 @@ async def mortgage_years(request: Request, amount: int) -> Response:
 
 @app.post("/voice/mortgage/lead")
 async def mortgage_lead(
-    request: Request, amount: int, years: int, savings: int
+    request: Request,
+    amount: int,
+    elapsed: int,
+    term: int,
+    remaining: int,
+    savings: int,
 ) -> Response:
     form = await request.form()
     if form.get("Digits") == "1":
         with sqlite3.connect(database_path()) as connection:
             connection.execute(
                 """
-                INSERT INTO leads
-                    (phone_number, mortgage_amount, remaining_years,
-                     estimated_savings, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO leads (
+                    phone_number, mortgage_amount, years_since_origination,
+                    original_term_years, remaining_years, estimated_savings,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     form.get("From", ""),
                     amount,
-                    years,
+                    elapsed,
+                    term,
+                    remaining,
                     savings,
                     datetime.now(UTC).isoformat(),
                 ),
             )
-        return twiml("", say("תודה, הפרטים נקלטו. נציג יחזור אליך בהקדם."))
-    return twiml("", say("תודה שהתקשרת."))
+        return twiml(
+            "",
+            say("\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd \u05e0\u05e7\u05dc\u05d8\u05d5. \u05e0\u05e6\u05d9\u05d2 \u05d9\u05d7\u05d6\u05d5\u05e8 \u05d0\u05dc\u05d9\u05da \u05d1\u05d4\u05e7\u05d3\u05dd."
+        ),
+    )
+    return twiml("", say("\u05ea\u05d5\u05d3\u05d4 \u05e9\u05d4\u05ea\u05e7\u05e9\u05e8\u05ea."))
 
 
 @app.get("/leads")
@@ -181,8 +228,9 @@ def leads() -> JSONResponse:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
             """
-            SELECT id, phone_number, mortgage_amount, remaining_years,
-                   estimated_savings, created_at
+            SELECT id, phone_number, mortgage_amount,
+                   years_since_origination, original_term_years,
+                   remaining_years, estimated_savings, created_at
             FROM leads ORDER BY id DESC
             """
         ).fetchall()
