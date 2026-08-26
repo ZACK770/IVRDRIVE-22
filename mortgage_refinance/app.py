@@ -16,6 +16,7 @@ BASELINE_AMOUNT = 400_000
 BASELINE_YEARS = 20
 BASELINE_SAVINGS = 100_000
 SAVINGS_RATE = BASELINE_SAVINGS / BASELINE_AMOUNT / BASELINE_YEARS
+ROUTE_PREFIX = "/mortgage"
 
 app = FastAPI(
     title="Mortgage Refinance Opportunity Calculator",
@@ -71,6 +72,10 @@ def gather(action: str, prompt: str, num_digits: str = "") -> str:
         ' timeout="8" finishOnKey="#">'
         f"{say(prompt)}</Gather>"
     )
+
+
+def action_path(path: str) -> str:
+    return f"{ROUTE_PREFIX}{path}"
 
 
 AMOUNT_PROMPT = (
@@ -148,7 +153,7 @@ async def mortgage_start(request: Request) -> Response:
     return twiml(
         "",
         gather(
-            "/voice/mortgage/amount",
+            action_path("/voice/mortgage/amount"),
             AMOUNT_PROMPT,
         ),
     )
@@ -162,14 +167,14 @@ async def mortgage_amount(request: Request) -> Response:
         return twiml(
             "",
             gather(
-                "/voice/mortgage/amount",
+                action_path("/voice/mortgage/amount"),
                 INVALID_AMOUNT_PROMPT,
             ),
         )
     return twiml(
         "",
         gather(
-            f"/voice/mortgage/elapsed?amount={int(amount)}",
+            action_path(f"/voice/mortgage/elapsed?amount={int(amount)}"),
             ELAPSED_PROMPT,
         ),
     )
@@ -183,14 +188,16 @@ async def mortgage_elapsed(request: Request, amount: int) -> Response:
         return twiml(
             "",
             gather(
-                f"/voice/mortgage/elapsed?amount={amount}",
+                action_path(f"/voice/mortgage/elapsed?amount={amount}"),
                 INVALID_ELAPSED_PROMPT,
             ),
         )
     return twiml(
         "",
         gather(
-            f"/voice/mortgage/term?amount={amount}&elapsed={int(elapsed)}",
+            action_path(
+                f"/voice/mortgage/term?amount={amount}&elapsed={int(elapsed)}"
+            ),
             TERM_PROMPT,
         ),
     )
@@ -208,7 +215,7 @@ async def mortgage_term(request: Request, amount: int, elapsed: int) -> Response
         return twiml(
             "",
             gather(
-                f"/voice/mortgage/term?amount={amount}&elapsed={elapsed}",
+                action_path(f"/voice/mortgage/term?amount={amount}&elapsed={elapsed}"),
                 INVALID_TERM_PROMPT,
             ),
         )
@@ -220,8 +227,10 @@ async def mortgage_term(request: Request, amount: int, elapsed: int) -> Response
     return twiml(
         "",
         gather(
-            f"/voice/mortgage/lead?amount={amount}&elapsed={elapsed}"
-            f"&term={int(term)}&remaining={remaining}&savings={savings}",
+            action_path(
+                f"/voice/mortgage/lead?amount={amount}&elapsed={elapsed}"
+                f"&term={int(term)}&remaining={remaining}&savings={savings}"
+            ),
             prompt,
             num_digits="1",
         ),
