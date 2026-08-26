@@ -96,11 +96,11 @@ def module_message(text: str) -> dict[str, Any]:
 
 
 def module_digits(
-    prompt: str, *, min_digits: int = 1, max_digits: int = 10
+    prompt: str, *, name: str, min_digits: int = 1, max_digits: int = 10
 ) -> dict[str, Any]:
     return {
         "type": "getDTMF",
-        "name": "dtmf",
+        "name": name,
         "min": min_digits,
         "max": max_digits,
         "timeout": 8,
@@ -108,10 +108,10 @@ def module_digits(
     }
 
 
-def module_menu(text: str) -> dict[str, Any]:
+def module_menu(text: str, *, name: str = "confirm") -> dict[str, Any]:
     return {
         "type": "simpleMenu",
-        "name": "dtmf",
+        "name": name,
         "enabledKeys": "1,2",
         "times": 2,
         "timeout": 8,
@@ -250,78 +250,58 @@ def health() -> dict[str, str]:
 
 @app.api_route("/voice/mortgage", methods=["GET", "POST"])
 async def mortgage_start(request: Request) -> JSONResponse:
-    call_id, caller, dtmf = module_params(request)
-    step, amount, elapsed, term = module_session(call_id, caller)
-
-    if step == "start":
-        save_module_session(call_id, caller, "amount")
-        return JSONResponse(module_digits(AMOUNT_PROMPT, max_digits=10))
-    if step == "amount":
-        if not dtmf.isdigit() or int(dtmf) <= 0:
-            return JSONResponse(module_digits(INVALID_AMOUNT_PROMPT, max_digits=10))
-        amount = int(dtmf)
-        save_module_session(call_id, caller, "elapsed", amount=amount)
-        return JSONResponse(module_digits(ELAPSED_PROMPT, max_digits=2))
-    if step == "elapsed":
-        if not dtmf.isdigit() or not 0 <= int(dtmf) <= 50:
-            return JSONResponse(module_digits(INVALID_ELAPSED_PROMPT, max_digits=2))
-        elapsed = int(dtmf)
-        save_module_session(call_id, caller, "term", amount=amount, elapsed=elapsed)
-        return JSONResponse(module_digits(TERM_PROMPT, max_digits=2))
-    if step == "term":
-        if (
-            not dtmf.isdigit()
-            or not 1 <= int(dtmf) <= 50
-            or int(dtmf) <= int(elapsed or 0)
-        ):
-            return JSONResponse(module_message(INVALID_TERM_PROMPT))
-        term = int(dtmf)
-        remaining = term - int(elapsed or 0)
-        savings = estimate_savings(int(amount or 0), remaining)
-        save_module_session(
-            call_id, caller, "lead", amount=amount, elapsed=elapsed, term=term
-        )
-        return JSONResponse(
-            module_menu(SAVINGS_PROMPT.format(savings=savings))
-        )
-    if step == "lead":
-        if dtmf == "1":
-            remaining = int(term or 0) - int(elapsed or 0)
-            savings = estimate_savings(int(amount or 0), remaining)
-            with sqlite3.connect(database_path()) as connection:
-                connection.execute(
-                    """
-                    INSERT INTO leads (
-                        phone_number, mortgage_amount, years_since_origination,
-                        original_term_years, remaining_years, estimated_savings,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        caller,
-                        amount,
-                        elapsed,
-                        term,
-                        remaining,
-                        savings,
-                        datetime.now(UTC).isoformat(),
-                    ),
-                )
-            save_module_session(call_id, caller, "done", amount, elapsed, term)
-            return JSONResponse(
-                module_message(
-                    "\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd "
-                    "\u05e0\u05e7\u05dc\u05d8\u05d5. \u05e0\u05e6\u05d9\u05d2 \u05d9\u05d7\u05d6\u05d5\u05e8 "
-                    "\u05d0\u05dc\u05d9\u05da \u05d1\u05d4\u05e7\u05d3\u05dd."
-                )
+    _, caller, _ = module_params(request)
+    values = {key.lower(): value for key, value in request.query_params.items()}
+    if values.get("confirm") == "1":
+        amount = int(values["amount"])
+        elapsed = int(values["elapsed"])
+        term = int(values["term"])
+        remaining = term - elapsed
+        savings = estimate_savings(amount, remaining)
+        with sqlite3.connect(database_path()) as connection:
+            connection.execute(
+                """
+                INSERT INTO leads (
+                    phone_number, mortgage_amount, years_since_origination,
+                    original_term_years, remaining_years, estimated_savings,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    caller,
+                    amount,
+                    elapsed,
+                    term,
+                    remaining,
+                    savings,
+                    datetime.now(UTC).isoformat(),
+                ),
             )
-        save_module_session(call_id, caller, "done", amount, elapsed, term)
         return JSONResponse(
             module_message(
-                "\u05ea\u05d5\u05d3\u05d4 \u05e9\u05d4\u05ea\u05e7\u05e9\u05e8\u05ea."
+                "\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd "
+                "\u05e0\u05e7\u05dc\u05d8\u05d5. \u05e0\u05e6\u05d9\u05d2 \u05d9\u05d7\u05d6\u05d5\u05e8 "
+                "\u05d0\u05dc\u05d9\u05da \u05d1\u05d4\u05e7\u05d3\u05dd."
             )
         )
-    return JSONResponse({"type": "hangup"})
+    if {"amount", "elapsed", "term"} <= values.keys():
+        amount = int(values["amount"])
+        elapsed = int(values["elapsed"])
+        term = int(values["term"])
+        if amount <= 0 or not 0 <= elapsed <= 50 or not 1 <= term <= 50:
+            return JSONResponse(module_message(INVALID_TERM_PROMPT))
+        if term <= elapsed:
+            return JSONResponse(module_message(INVALID_TERM_PROMPT))
+        remaining = term - elapsed
+        savings = estimate_savings(amount, remaining)
+        return JSONResponse(module_menu(SAVINGS_PROMPT.format(savings=savings)))
+    return JSONResponse(
+        [
+            module_digits(AMOUNT_PROMPT, name="amount", max_digits=10),
+            module_digits(ELAPSED_PROMPT, name="elapsed", max_digits=2),
+            module_digits(TERM_PROMPT, name="term", max_digits=2),
+        ]
+    )
 
 
 @app.post("/voice/mortgage/amount")
