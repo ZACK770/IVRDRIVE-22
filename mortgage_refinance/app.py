@@ -95,13 +95,16 @@ def module_message(text: str) -> dict[str, Any]:
     return {"type": "simpleMessage", "files": [{"text": text}]}
 
 
-def module_digits(*, min_digits: int = 1, max_digits: int = 10) -> dict[str, Any]:
+def module_digits(
+    prompt: str, *, min_digits: int = 1, max_digits: int = 10
+) -> dict[str, Any]:
     return {
         "type": "getDTMF",
         "name": "dtmf",
-        "min_digits": min_digits,
-        "max_digits": max_digits,
+        "min": min_digits,
+        "max": max_digits,
         "timeout": 8,
+        "files": [{"text": prompt}],
     }
 
 
@@ -109,10 +112,8 @@ def module_menu(text: str) -> dict[str, Any]:
     return {
         "type": "simpleMenu",
         "name": "dtmf",
-        "enabled_keys": "1,2",
-        "min_digits": 1,
-        "max_digits": 1,
-        "tries": 2,
+        "enabledKeys": "1,2",
+        "times": 2,
         "timeout": 8,
         "files": [{"text": text}],
     }
@@ -253,29 +254,20 @@ async def mortgage_start(request: Request) -> JSONResponse:
     step, amount, elapsed, term = module_session(call_id, caller)
 
     if step == "start":
-        save_module_session(call_id, caller, "wait_amount")
-        return JSONResponse(module_message(AMOUNT_PROMPT))
-    if step == "wait_amount":
         save_module_session(call_id, caller, "amount")
-        return JSONResponse(module_digits(max_digits=10))
+        return JSONResponse(module_digits(AMOUNT_PROMPT, max_digits=10))
     if step == "amount":
         if not dtmf.isdigit() or int(dtmf) <= 0:
-            return JSONResponse(module_message(INVALID_AMOUNT_PROMPT))
+            return JSONResponse(module_digits(INVALID_AMOUNT_PROMPT, max_digits=10))
         amount = int(dtmf)
-        save_module_session(call_id, caller, "wait_elapsed", amount=amount)
-        return JSONResponse(module_message(ELAPSED_PROMPT))
-    if step == "wait_elapsed":
         save_module_session(call_id, caller, "elapsed", amount=amount)
-        return JSONResponse(module_digits(max_digits=2))
+        return JSONResponse(module_digits(ELAPSED_PROMPT, max_digits=2))
     if step == "elapsed":
         if not dtmf.isdigit() or not 0 <= int(dtmf) <= 50:
-            return JSONResponse(module_message(INVALID_ELAPSED_PROMPT))
+            return JSONResponse(module_digits(INVALID_ELAPSED_PROMPT, max_digits=2))
         elapsed = int(dtmf)
-        save_module_session(call_id, caller, "wait_term", amount=amount, elapsed=elapsed)
-        return JSONResponse(module_message(TERM_PROMPT))
-    if step == "wait_term":
         save_module_session(call_id, caller, "term", amount=amount, elapsed=elapsed)
-        return JSONResponse(module_digits(max_digits=2))
+        return JSONResponse(module_digits(TERM_PROMPT, max_digits=2))
     if step == "term":
         if (
             not dtmf.isdigit()
