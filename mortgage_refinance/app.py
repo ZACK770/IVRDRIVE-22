@@ -3,6 +3,8 @@
 # ruff: noqa: E501, I001
 
 import os
+import csv
+import io
 import sqlite3
 from datetime import UTC, datetime
 from html import escape
@@ -422,8 +424,7 @@ async def mortgage_lead(
     return twiml("", say("\u05ea\u05d5\u05d3\u05d4 \u05e9\u05d4\u05ea\u05e7\u05e9\u05e8\u05ea."))
 
 
-@app.get("/leads")
-def leads() -> JSONResponse:
+def lead_rows() -> list[dict[str, Any]]:
     with sqlite3.connect(database_path()) as connection:
         connection.row_factory = sqlite3.Row
         rows = connection.execute(
@@ -434,4 +435,112 @@ def leads() -> JSONResponse:
             FROM leads ORDER BY id DESC
             """
         ).fetchall()
-    return JSONResponse([dict(row) for row in rows])
+    return [dict(row) for row in rows]
+
+
+@app.get("/leads", response_class=HTMLResponse)
+def leads() -> str:
+    rows = lead_rows()
+    headers = [
+        ("id", "מס׳"),
+        ("phone_number", "טלפון"),
+        ("mortgage_amount", "סכום משכנתא"),
+        ("years_since_origination", "שנים שעברו"),
+        ("original_term_years", "תקופה מקורית"),
+        ("remaining_years", "שנים שנותרו"),
+        ("estimated_savings", "חיסכון משוער"),
+        ("created_at", "מועד"),
+    ]
+    table_rows = "".join(
+        "<tr>"
+        + "".join(f"<td>{escape(str(row[key]))}</td>" for key, _ in headers)
+        + "</tr>"
+        for row in rows
+    )
+    return f"""<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>לידים - מחזור משכנתא</title>
+<style>
+body {{ margin: 0; background: #f5f7fb; color: #172033; font-family: Arial, sans-serif; }}
+main {{ max-width: 1180px; margin: 36px auto; padding: 0 18px; }}
+.top {{ align-items: center; display: flex; gap: 12px; justify-content: space-between; margin-bottom: 18px; }}
+h1 {{ font-size: 26px; margin: 0; }}
+.actions {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+a {{ background: #1769aa; border-radius: 8px; color: white; padding: 10px 14px; text-decoration: none; }}
+a.secondary {{ background: #e7edf5; color: #1769aa; }}
+.card {{ background: white; border: 1px solid #e1e7ef; border-radius: 12px; box-shadow: 0 5px 18px #1d355710; overflow-x: auto; }}
+table {{ border-collapse: collapse; min-width: 900px; width: 100%; }}
+th, td {{ border-bottom: 1px solid #edf0f4; padding: 12px 14px; text-align: right; white-space: nowrap; }}
+th {{ background: #f0f5fa; color: #42526b; font-size: 13px; }}
+tr:last-child td {{ border-bottom: 0; }}
+.empty {{ color: #68758a; padding: 28px; text-align: center; }}
+</style>
+</head>
+<body><main>
+<div class="top"><h1>לידים — מחזור משכנתא</h1>
+<div class="actions"><a href="/mortgage/leads.csv">הורדת CSV</a>
+<a href="/mortgage/leads.xls">פתיחה ב־Excel</a>
+<a class="secondary" href="/mortgage/leads">רענון</a></div></div>
+<div class="card">{"<table><thead><tr>" + "".join(f"<th>{label}</th>" for _, label in headers) + "</tr></thead><tbody>" + table_rows + "</tbody></table>" if rows else '<div class="empty">עדיין לא נקלטו לידים</div>'}</div>
+</main></body></html>"""
+
+
+@app.get("/leads.csv")
+def leads_csv() -> Response:
+    rows = lead_rows()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["מס׳", "טלפון", "סכום משכנתא", "שנים שעברו", "תקופה מקורית",
+                     "שנים שנותרו", "חיסכון משוער", "מועד"])
+    for row in rows:
+        writer.writerow(
+            [
+                row["id"],
+                row["phone_number"],
+                row["mortgage_amount"],
+                row["years_since_origination"],
+                row["original_term_years"],
+                row["remaining_years"],
+                row["estimated_savings"],
+                row["created_at"],
+            ]
+        )
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="mortgage-leads.csv"'},
+    )
+
+
+@app.get("/leads.xls")
+def leads_xls() -> Response:
+    rows = lead_rows()
+    labels = ["מס׳", "טלפון", "סכום משכנתא", "שנים שעברו", "תקופה מקורית",
+              "שנים שנותרו", "חיסכון משוער", "מועד"]
+    body = "".join(
+        "<tr>" + "".join(f"<td>{escape(str(value))}</td>" for value in [
+            row["id"], row["phone_number"], row["mortgage_amount"],
+            row["years_since_origination"], row["original_term_years"],
+            row["remaining_years"], row["estimated_savings"], row["created_at"],
+        ]) + "</tr>"
+        for row in rows
+    )
+    content = (
+        '<html xmlns:o="urn:schemas-microsoft-com:office:office" '
+        'xmlns:x="urn:schemas-microsoft-com:office:excel"><meta charset="utf-8">'
+        "<table><tr>" + "".join(f"<th>{label}</th>" for label in labels)
+        + "</tr>" + body + "</table></html>"
+    )
+    return Response(
+        content="\ufeff" + content,
+        media_type="application/vnd.ms-excel",
+        headers={"Content-Disposition": 'attachment; filename="mortgage-leads.xls"'},
+    )
+
+
+@app.get("/leads.json")
+def leads_json() -> JSONResponse:
+    return JSONResponse(lead_rows())
