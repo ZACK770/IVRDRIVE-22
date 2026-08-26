@@ -79,8 +79,7 @@ def initialize_database() -> None:
             connection.execute(
                 """
                 CREATE UNIQUE INDEX IF NOT EXISTS
-                idx_mortgage_leads_call_id ON mortgage_leads (call_id)
-                WHERE call_id IS NOT NULL
+                idx_mortgage_leads_call_id_unique ON mortgage_leads (call_id)
                 """
             )
         return
