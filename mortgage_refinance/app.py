@@ -47,14 +47,40 @@ def initialize_database() -> None:
                 """
                 CREATE TABLE IF NOT EXISTS mortgage_leads (
                     id BIGSERIAL PRIMARY KEY,
+                    call_id TEXT,
                     phone_number TEXT NOT NULL DEFAULT '',
-                    mortgage_amount BIGINT NOT NULL CHECK (mortgage_amount > 0),
-                    years_since_origination INTEGER NOT NULL,
-                    original_term_years INTEGER NOT NULL,
-                    remaining_years INTEGER NOT NULL,
-                    estimated_savings BIGINT NOT NULL,
+                    mortgage_amount BIGINT CHECK (mortgage_amount > 0),
+                    years_since_origination INTEGER,
+                    original_term_years INTEGER,
+                    remaining_years INTEGER,
+                    estimated_savings BIGINT,
+                    status TEXT NOT NULL DEFAULT 'in_progress',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
+                """
+            )
+            for column in (
+                "call_id TEXT",
+                "status TEXT NOT NULL DEFAULT 'in_progress'",
+            ):
+                connection.execute(
+                    f"ALTER TABLE mortgage_leads ADD COLUMN IF NOT EXISTS {column}"
+                )
+            for column in (
+                "mortgage_amount",
+                "years_since_origination",
+                "original_term_years",
+                "remaining_years",
+                "estimated_savings",
+            ):
+                connection.execute(
+                    f"ALTER TABLE mortgage_leads ALTER COLUMN {column} DROP NOT NULL"
+                )
+            connection.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS
+                idx_mortgage_leads_call_id ON mortgage_leads (call_id)
+                WHERE call_id IS NOT NULL
                 """
             )
         return
@@ -117,6 +143,49 @@ def insert_lead(
             """,
             (*values, datetime.now(UTC).isoformat()),
         )
+
+
+def save_lead_state(
+    call_id: str,
+    caller: str,
+    amount: int | None,
+    elapsed: int | None,
+    term: int | None,
+    remaining: int | None,
+    savings: int | None,
+    status: str,
+) -> None:
+    if not call_id:
+        return
+    if database_url():
+        with psycopg.connect(database_url()) as connection:
+            connection.execute(
+                """
+                INSERT INTO mortgage_leads (
+                    call_id, phone_number, mortgage_amount,
+                    years_since_origination, original_term_years,
+                    remaining_years, estimated_savings, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (call_id) DO UPDATE SET
+                    phone_number = COALESCE(NULLIF(EXCLUDED.phone_number, ''), mortgage_leads.phone_number),
+                    mortgage_amount = COALESCE(EXCLUDED.mortgage_amount, mortgage_leads.mortgage_amount),
+                    years_since_origination = COALESCE(EXCLUDED.years_since_origination, mortgage_leads.years_since_origination),
+                    original_term_years = COALESCE(EXCLUDED.original_term_years, mortgage_leads.original_term_years),
+                    remaining_years = COALESCE(EXCLUDED.remaining_years, mortgage_leads.remaining_years),
+                    estimated_savings = COALESCE(EXCLUDED.estimated_savings, mortgage_leads.estimated_savings),
+                    status = EXCLUDED.status
+                """,
+                (
+                    call_id,
+                    caller,
+                    amount,
+                    elapsed,
+                    term,
+                    remaining,
+                    savings,
+                    status,
+                ),
+            )
 
 
 def twiml(message: str, gather_prompt: str = "") -> Response:
@@ -312,15 +381,30 @@ def health() -> dict[str, str]:
 
 @app.api_route("/voice/mortgage", methods=["GET", "POST"])
 async def mortgage_start(request: Request) -> JSONResponse:
-    _, caller, _ = module_params(request)
+    call_id, caller, _ = module_params(request)
     values = {key.lower(): value for key, value in request.query_params.items()}
+    amount = int(values["amount"]) if values.get("amount", "").isdigit() else None
+    elapsed = int(values["elapsed"]) if values.get("elapsed", "").isdigit() else None
+    term = int(values["term"]) if values.get("term", "").isdigit() else None
+    remaining_value = term - elapsed if term is not None and elapsed is not None else None
+    remaining = remaining_value if remaining_value is None or remaining_value >= 0 else None
+    savings = (
+        estimate_savings(amount, remaining)
+        if amount is not None and remaining is not None and remaining >= 0
+        else None
+    )
+    pbx_status = values.get("pbxcallstatus", "").upper()
+    status = (
+        "disconnected"
+        if pbx_status in {"HANGUP", "DISCONNECTED", "END", "CANCEL"}
+        else {"1": "details_requested", "2": "finished"}.get(
+            values.get("confirm", ""), "in_progress"
+        )
+    )
+    save_lead_state(
+        call_id, caller, amount, elapsed, term, remaining, savings, status
+    )
     if values.get("confirm") == "1":
-        amount = int(values["amount"])
-        elapsed = int(values["elapsed"])
-        term = int(values["term"])
-        remaining = term - elapsed
-        savings = estimate_savings(amount, remaining)
-        insert_lead(caller, amount, elapsed, term, remaining, savings)
         return JSONResponse(
             module_message(
                 "\u05ea\u05d5\u05d3\u05d4, \u05d4\u05e4\u05e8\u05d8\u05d9\u05dd "
@@ -479,9 +563,9 @@ def lead_rows() -> list[dict[str, Any]]:
         with psycopg.connect(database_url(), row_factory=dict_row) as connection:
             rows = connection.execute(
                 """
-                SELECT id, phone_number, mortgage_amount,
+                SELECT id, call_id, phone_number, mortgage_amount,
                        years_since_origination, original_term_years,
-                       remaining_years, estimated_savings, created_at
+                       remaining_years, estimated_savings, status, created_at
                 FROM mortgage_leads ORDER BY id DESC
                 """
             ).fetchall()
