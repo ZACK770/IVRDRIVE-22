@@ -38,6 +38,8 @@ from app import (
     public_api,
     scheduler,
 )
+from mortgage_refinance.app import app as mortgage_app
+from mortgage_refinance.app import initialize_database as initialize_mortgage_database
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("probe")
@@ -46,6 +48,7 @@ log = logging.getLogger("probe")
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     db.init_db()
+    initialize_mortgage_database()
     scheduler.start()
     try:
         yield
@@ -60,6 +63,7 @@ app.include_router(public_api.router)
 app.include_router(ops_api.router)
 app.include_router(ivr.router)
 app.include_router(console_proxy.router)
+app.mount("/mortgage", mortgage_app)
 
 
 _DRIVER_REGISTER_PAGE = """<!doctype html>
