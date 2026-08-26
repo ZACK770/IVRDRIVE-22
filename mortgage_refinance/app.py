@@ -161,14 +161,14 @@ def module_digits(
     }
 
 
-def module_menu(text: str, *, name: str = "confirm") -> dict[str, Any]:
+def module_menu(files: list[dict[str, str]], *, name: str = "confirm") -> dict[str, Any]:
     return {
         "type": "simpleMenu",
         "name": name,
         "enabledKeys": "1,2",
         "times": 2,
         "timeout": 8,
-        "files": [{"text": text}],
+        "files": files,
     }
 
 
@@ -271,6 +271,15 @@ SAVINGS_PROMPT = (
     "\u05d4\u05e7\u05e9 1, "
     "\u05dc\u05e1\u05d9\u05d5\u05dd \u05d4\u05e7\u05e9 2."
 )
+SAVINGS_INTRO = (
+    "\u05d5\u05d5\u05d0\u05d5! \u05d9\u05d9\u05ea\u05db\u05df \u05de\u05d0\u05d5\u05d3 "
+    "\u05e9\u05d0\u05ea\u05d4 \u05d9\u05db\u05d5\u05dc \u05dc\u05d7\u05e1\u05d5\u05da \u05db-"
+)
+SAVINGS_OUTRO = (
+    " \u05e9\u05e7\u05dc\u05d9\u05dd \u05de\u05de\u05d7\u05d6\u05d5\u05e8 "
+    "\u05d4\u05de\u05e9\u05db\u05e0\u05ea\u05d0. \u05dc\u05e4\u05e8\u05d8\u05d9\u05dd \u05e0\u05d5\u05e1\u05e4\u05d9\u05dd "
+    "\u05d4\u05e7\u05e9 1, \u05dc\u05e1\u05d9\u05d5\u05dd \u05d4\u05e7\u05e9 2."
+)
 
 
 @app.on_event("startup")
@@ -329,7 +338,15 @@ async def mortgage_start(request: Request) -> JSONResponse:
             return JSONResponse(module_message(INVALID_TERM_PROMPT))
         remaining = term - elapsed
         savings = estimate_savings(amount, remaining)
-        return JSONResponse(module_menu(SAVINGS_PROMPT.format(savings=savings)))
+        return JSONResponse(
+            module_menu(
+                [
+                    {"text": SAVINGS_INTRO},
+                    {"number": str(savings)},
+                    {"text": SAVINGS_OUTRO},
+                ]
+            )
+        )
     return JSONResponse(
         [
             module_digits(AMOUNT_PROMPT, name="amount", max_digits=10),
