@@ -73,7 +73,7 @@ async def run(args: argparse.Namespace) -> list[dict[str, object]]:
         async def drain() -> None:
             try:
                 async for message in ws:
-                    if isinstance(message, bytes):
+                    if isinstance(message, bytes) and any(message):
                         received.append((time.monotonic(), len(message)))
             except Exception:
                 pass
@@ -90,7 +90,10 @@ async def run(args: argparse.Namespace) -> list[dict[str, object]]:
                 await ws.send(pcm[offset : offset + FRAME_BYTES])
                 await asyncio.sleep(FRAME_MS / 1000)
             sent_end = time.monotonic()
-            await asyncio.sleep(args.pause_ms / 1000)
+            silence_frames = max(1, round(args.pause_ms / FRAME_MS))
+            for _ in range(silence_frames):
+                await ws.send(b"\x00" * FRAME_BYTES)
+                await asyncio.sleep(FRAME_MS / 1000)
             deadline = time.monotonic() + args.turn_timeout_ms / 1000
             first = next((item for item in received if item[0] >= sent_end), None)
             while first is None and time.monotonic() < deadline:
