@@ -59,6 +59,7 @@ class CallBridge:
         self._last_user_audio: float | None = None
         self._speaking = False
         self._turn_id = 0
+        self._pending_turn_id: int | None = None
         self._active_turn_id: int | None = None
         self._hangup_after_response = False
         self._meter = cost.UsageMeter()
@@ -89,8 +90,11 @@ class CallBridge:
             rms = audio.rms(chunk)
             if rms > 200:  # ignore the PBX's constant-8 silence
                 self._last_user_audio = time.monotonic()
+                if not self._speaking and self._pending_turn_id is None:
+                    self._pending_turn_id = self._turn_id + 1
                 self._cap.trace(
                     "user_audio_batch_ready",
+                    self._pending_turn_id,
                     rms=rms,
                     bytes=len(chunk),
                     batch_frames=INPUT_BATCH_FRAMES,
@@ -165,7 +169,8 @@ class CallBridge:
                 pcm8k, self._carry = audio.downsample_24k_to_8k(event["pcm24k"], self._carry)
                 if not self._speaking:
                     self._speaking = True
-                    self._turn_id += 1
+                    self._turn_id = self._pending_turn_id or (self._turn_id + 1)
+                    self._pending_turn_id = None
                     self._active_turn_id = self._turn_id
                     first_audio_ms = round(
                         (received_at - self._last_user_audio) * 1000, 3
@@ -212,9 +217,10 @@ class CallBridge:
                     result = self._tools.run(call["name"], call.get("args") or {})
                     tool_ms = round((time.monotonic() - tool_started) * 1000, 3)
                     self.stats["tool_calls"].append({"name": call["name"], "result": result})
+                    tool_turn_id = self._pending_turn_id or self._turn_id + 1
                     self._cap.trace(
                         "tool_completed",
-                        self._turn_id if self._turn_id else None,
+                        tool_turn_id,
                         name=call["name"],
                         duration_ms=tool_ms,
                     )
