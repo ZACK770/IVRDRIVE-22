@@ -54,11 +54,15 @@ class GeminiLiveSession:
         system_prompt: str,
         model: str = DEFAULT_MODEL,
         tools: list[dict[str, Any]] | None = None,
+        silence_ms: int = SILENCE_MS,
+        prefix_padding_ms: int = PREFIX_PADDING_MS,
     ) -> None:
         self._api_key = api_key
         self._system_prompt = system_prompt
         self._model = model
         self._tools = tools or []
+        self._silence_ms = silence_ms
+        self._prefix_padding_ms = prefix_padding_ms
         self._ws: Any = None
 
     async def __aenter__(self) -> GeminiLiveSession:
@@ -96,8 +100,8 @@ class GeminiLiveSession:
                             "automaticActivityDetection": {
                                 "startOfSpeechSensitivity": START_SENSITIVITY,
                                 "endOfSpeechSensitivity": END_SENSITIVITY,
-                                "prefixPaddingMs": PREFIX_PADDING_MS,
-                                "silenceDurationMs": SILENCE_MS,
+                                "prefixPaddingMs": self._prefix_padding_ms,
+                                "silenceDurationMs": self._silence_ms,
                             },
                             "activityHandling": "START_OF_ACTIVITY_INTERRUPTS",
                         },

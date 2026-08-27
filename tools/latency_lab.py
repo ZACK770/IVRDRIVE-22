@@ -18,6 +18,7 @@ import json
 import time
 import wave
 from pathlib import Path
+from urllib.parse import urlencode
 
 import websockets
 
@@ -41,8 +42,18 @@ def read_pcm(path: Path) -> bytes:
 
 async def run(args: argparse.Namespace) -> list[dict[str, object]]:
     headers = {"Authorization": f"Bearer {args.bearer}"} if args.bearer else {}
+    overrides = {
+        key: value
+        for key, value in (
+            ("vad_silence_ms", args.vad_silence_ms),
+            ("vad_prefix_ms", args.vad_prefix_ms),
+            ("input_batch_frames", args.batch_frames),
+        )
+        if value is not None
+    }
+    url = f"{args.url}?{urlencode(overrides)}" if overrides else args.url
     async with websockets.connect(
-        args.url, additional_headers=headers, max_size=None
+        url, additional_headers=headers, max_size=None
     ) as ws:
         await ws.send(
             json.dumps(
@@ -112,6 +123,9 @@ def main() -> None:
     parser.add_argument("--pause-ms", type=int, default=900)
     parser.add_argument("--turn-timeout-ms", type=int, default=6000)
     parser.add_argument("--settle-ms", type=int, default=1500)
+    parser.add_argument("--vad-silence-ms", type=int)
+    parser.add_argument("--vad-prefix-ms", type=int)
+    parser.add_argument("--batch-frames", type=int)
     args = parser.parse_args()
     print(json.dumps(asyncio.run(run(args)), ensure_ascii=False, indent=2))
 

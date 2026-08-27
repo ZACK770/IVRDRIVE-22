@@ -234,6 +234,7 @@ MODE = os.getenv("PROBE_MODE", "probe").lower()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 EXPECTED_BEARER = os.getenv("PROBE_BEARER_SECRET")
 ENFORCE_BEARER = os.getenv("PROBE_ENFORCE_BEARER", "0") == "1"
+LATENCY_LAB_ENABLED = os.getenv("LATENCY_LAB_ENABLED", "0") == "1"
 
 SENSITIVE_HEADERS = {"authorization", "proxy-authorization", "cookie"}
 
@@ -267,6 +268,28 @@ def _caller_from_start(text: str) -> str:
     except Exception:
         return ""
     return str(data.get("caller") or "") if isinstance(data, dict) else ""
+
+
+def _latency_lab_overrides(ws: WebSocket) -> dict[str, int]:
+    if not LATENCY_LAB_ENABLED:
+        return {}
+    limits = {
+        "input_batch_frames": ("input_batch_frames", 1, 20),
+        "vad_silence_ms": ("vad_silence_ms", 50, 2000),
+        "vad_prefix_ms": ("vad_prefix_ms", 0, 1000),
+    }
+    overrides: dict[str, int] = {}
+    for target, (query_name, minimum, maximum) in limits.items():
+        value = ws.query_params.get(query_name)
+        if value is None:
+            continue
+        try:
+            parsed = int(value)
+        except ValueError:
+            continue
+        if minimum <= parsed <= maximum:
+            overrides[target] = parsed
+    return overrides
 
 
 async def _echo_loopback(ws: WebSocket, cap: capture.CallCapture, kind: str, payload) -> None:
@@ -334,11 +357,14 @@ async def _handle(ws: WebSocket) -> None:
 
     call: bridge.CallBridge | None = None
     ai_task: asyncio.Task | None = None
+    lab_overrides = _latency_lab_overrides(ws)
+    if lab_overrides:
+        cap.trace("latency_lab_config", **lab_overrides)
 
     def start_ai(caller: str) -> None:
         """Deferred until the start frame arrives: the caller id shapes the prompt."""
         nonlocal call, ai_task
-        call = bridge.CallBridge(ws, cap, GEMINI_API_KEY, caller)
+        call = bridge.CallBridge(ws, cap, GEMINI_API_KEY, caller, **lab_overrides)
         ai_task = asyncio.create_task(call.run())
 
     tone_task = (

@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from app import audio, capture, cost, db, notify, prompt, tools
-from app.gemini_live import GeminiLiveSession
+from app.gemini_live import GeminiLiveSession, PREFIX_PADDING_MS, SILENCE_MS
 
 log = logging.getLogger("bridge")
 
@@ -45,12 +45,22 @@ class CallBridge:
     """Owns one call: PBX audio in, Gemini audio out, at a paced 20ms cadence."""
 
     def __init__(
-        self, ws, cap: capture.CallCapture, api_key: str, caller: str = ""
+        self,
+        ws,
+        cap: capture.CallCapture,
+        api_key: str,
+        caller: str = "",
+        input_batch_frames: int = INPUT_BATCH_FRAMES,
+        vad_silence_ms: int | None = None,
+        vad_prefix_ms: int | None = None,
     ) -> None:
         self._ws = ws
         self._cap = cap
         self._api_key = api_key
         self._tools = tools.ToolContext(cap.call_id, caller)
+        self._input_batch_frames = input_batch_frames
+        self._vad_silence_ms = vad_silence_ms
+        self._vad_prefix_ms = vad_prefix_ms
         self._out: collections.deque[bytes] = collections.deque()
         self._carry = b""
         self._partial = b""
@@ -83,7 +93,7 @@ class CallBridge:
         batch: list[bytes] = []
         while True:
             batch.append(await self._inbox.get())
-            if len(batch) < INPUT_BATCH_FRAMES:
+            if len(batch) < self._input_batch_frames:
                 continue
             chunk = b"".join(batch)
             batch.clear()
@@ -97,7 +107,7 @@ class CallBridge:
                     self._pending_turn_id,
                     rms=rms,
                     bytes=len(chunk),
-                    batch_frames=INPUT_BATCH_FRAMES,
+                    batch_frames=self._input_batch_frames,
                 )
             assert self._session is not None
             send_started = time.monotonic()
@@ -276,7 +286,15 @@ class CallBridge:
         if self._tools.caller:
             system_prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
         async with GeminiLiveSession(
-            self._api_key, system_prompt, tools=tools.DECLARATIONS
+            self._api_key,
+            system_prompt,
+            tools=tools.DECLARATIONS,
+            silence_ms=self._vad_silence_ms if self._vad_silence_ms is not None else SILENCE_MS,
+            prefix_padding_ms=(
+                self._vad_prefix_ms
+                if self._vad_prefix_ms is not None
+                else PREFIX_PADDING_MS
+            ),
         ) as session:
             self._session = session
             greeting = db.get_botconfig().get("opening_sentence") or prompt.GREETING
