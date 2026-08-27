@@ -364,8 +364,10 @@ class CallBridge:
         system_prompt = db.get_prompt("system")
         if self._tools.caller:
             system_prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
+        greeting = db.get_botconfig().get("opening_sentence") or prompt.GREETING
+        use_greeting_clip = bool(GREETING_CLIP and greeting == prompt.GREETING)
         tasks: list[asyncio.Task] = []
-        if GREETING_CLIP:
+        if use_greeting_clip:
             self._out.extend(GREETING_CLIP)
             tasks.append(asyncio.create_task(self._pump_output()))
         async with GeminiLiveSession(
@@ -381,7 +383,7 @@ class CallBridge:
         ) as session:
             self._session = session
             greeting = db.get_botconfig().get("opening_sentence") or prompt.GREETING
-            if greeting and not GREETING_CLIP:
+            if greeting and not use_greeting_clip:
                 await session.send_text(f"אמור עכשיו בדיוק את המשפט הזה: {greeting}")
             tasks.extend(
                 (
@@ -389,7 +391,7 @@ class CallBridge:
                     asyncio.create_task(self._pump_model()),
                 )
             )
-            if not GREETING_CLIP:
+            if not use_greeting_clip:
                 tasks.append(asyncio.create_task(self._pump_output()))
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
