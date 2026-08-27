@@ -99,6 +99,17 @@ async def run(args: argparse.Namespace) -> list[dict[str, object]]:
             while first is None and time.monotonic() < deadline:
                 await asyncio.sleep(0.02)
                 first = next((item for item in received if item[0] >= sent_end), None)
+            if first is not None:
+                last_audio = first[0]
+                while time.monotonic() < deadline:
+                    await asyncio.sleep(0.05)
+                    new_audio = [
+                        item for item in received if last_audio < item[0]
+                    ]
+                    if new_audio:
+                        last_audio = new_audio[-1][0]
+                    elif time.monotonic() - last_audio >= args.output_settle_ms / 1000:
+                        break
             results.append(
                 {
                     "turn": index,
@@ -122,10 +133,11 @@ def main() -> None:
     parser.add_argument("--caller", default="0501234567")
     parser.add_argument("--system", default="100")
     parser.add_argument("--bearer")
-    parser.add_argument("--warmup-ms", type=int, default=2000)
+    parser.add_argument("--warmup-ms", type=int, default=10000)
     parser.add_argument("--pause-ms", type=int, default=900)
-    parser.add_argument("--turn-timeout-ms", type=int, default=6000)
+    parser.add_argument("--turn-timeout-ms", type=int, default=12000)
     parser.add_argument("--settle-ms", type=int, default=1500)
+    parser.add_argument("--output-settle-ms", type=int, default=500)
     parser.add_argument("--vad-silence-ms", type=int)
     parser.add_argument("--vad-prefix-ms", type=int)
     parser.add_argument("--batch-frames", type=int)
