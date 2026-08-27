@@ -12,8 +12,11 @@ import collections
 import json
 import logging
 import os
+import random
 import time
+import wave
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from app import audio, capture, cost, db, notify, prompt, tools
@@ -29,6 +32,13 @@ SILENCE_FRAME = b"\x00" * FRAME_BYTES
 #: Gemini's server-side VAD needs a steady stream; batching 5 frames keeps the
 #: request rate at 10/s instead of 50/s without adding meaningful latency.
 INPUT_BATCH_FRAMES = 5
+HESITATION_SILENCE_S = float(os.getenv("GEMINI_HESITATION_SILENCE_MS", "300")) / 1000
+HESITATION_AUDIO_DIR = Path(__file__).parent.parent / "audio"
+HESITATION_FILES = (
+    "hesitation_01.wav",
+    "hesitation_02.wav",
+    "hesitation_03.wav",
+)
 
 GREETING = prompt.GREETING
 
@@ -39,6 +49,35 @@ TRANSFER_FRAME = os.getenv(
     "PBX_TRANSFER_FRAME",
     '{"action":"transfer","phone":"{phone}"}',
 )
+
+
+def _load_hesitation_clips() -> tuple[tuple[bytes, ...], ...]:
+    clips: list[tuple[bytes, ...]] = []
+    for file_name in HESITATION_FILES:
+        path = HESITATION_AUDIO_DIR / file_name
+        try:
+            with wave.open(str(path), "rb") as source:
+                if (
+                    source.getnchannels() != 1
+                    or source.getsampwidth() != 2
+                    or source.getframerate() != 8000
+                ):
+                    raise ValueError("expected mono PCM16LE at 8000Hz")
+                payload = source.readframes(source.getnframes())
+        except (OSError, ValueError) as exc:
+            log.warning("could not load hesitation clip %s: %s", path, exc)
+            continue
+
+        frames = tuple(
+            payload[offset : offset + FRAME_BYTES].ljust(FRAME_BYTES, b"\x00")
+            for offset in range(0, len(payload), FRAME_BYTES)
+        )
+        if frames:
+            clips.append(frames)
+    return tuple(clips)
+
+
+HESITATION_CLIPS = _load_hesitation_clips()
 
 
 class CallBridge:
@@ -62,11 +101,14 @@ class CallBridge:
         self._vad_silence_ms = vad_silence_ms
         self._vad_prefix_ms = vad_prefix_ms
         self._out: collections.deque[bytes] = collections.deque()
+        self._hesitation: collections.deque[bytes] = collections.deque()
         self._carry = b""
         self._partial = b""
         self._inbox: asyncio.Queue[bytes] = asyncio.Queue()
         self._session: GeminiLiveSession | None = None
         self._last_user_audio: float | None = None
+        self._user_audio_seen = False
+        self._hesitation_started = False
         self._speaking = False
         self._turn_id = 0
         self._pending_turn_id: int | None = None
@@ -100,6 +142,9 @@ class CallBridge:
             rms = audio.rms(chunk)
             if rms > 200:  # ignore the PBX's constant-8 silence
                 self._last_user_audio = time.monotonic()
+                self._user_audio_seen = True
+                self._hesitation.clear()
+                self._hesitation_started = False
                 if not self._speaking and self._pending_turn_id is None:
                     self._pending_turn_id = self._turn_id + 1
                 self._cap.trace(
@@ -109,6 +154,14 @@ class CallBridge:
                     bytes=len(chunk),
                     batch_frames=self._input_batch_frames,
                 )
+            elif (
+                self._user_audio_seen
+                and not self._speaking
+                and not self._hesitation_started
+                and self._last_user_audio is not None
+                and time.monotonic() - self._last_user_audio >= HESITATION_SILENCE_S
+            ):
+                self._start_hesitation()
             assert self._session is not None
             send_started = time.monotonic()
             pcm16k = audio.upsample_8k_to_16k(chunk)
@@ -132,13 +185,21 @@ class CallBridge:
         while True:
             next_tick += FRAME_S
             await asyncio.sleep(max(0.0, next_tick - time.monotonic()))
-            frame = self._out.popleft() if self._out else SILENCE_FRAME
+            if self._out:
+                hesitation_frame = False
+                frame = self._out.popleft()
+            elif self._hesitation:
+                hesitation_frame = True
+                frame = self._hesitation.popleft()
+            else:
+                hesitation_frame = False
+                frame = SILENCE_FRAME
             try:
                 await self._ws.send_bytes(frame)
             except Exception:
                 return
             self._cap.record("out", "binary", frame)
-            if self._active_turn_id is not None and frame != SILENCE_FRAME:
+            if self._active_turn_id is not None and frame != SILENCE_FRAME and not hesitation_frame:
                 self._cap.trace(
                     "pbx_audio_sent",
                     self._active_turn_id,
@@ -168,6 +229,12 @@ class CallBridge:
             self._out.append(data[i : i + FRAME_BYTES])
         self._partial = data[whole:]
 
+    def _start_hesitation(self) -> None:
+        if self._hesitation_started or not HESITATION_CLIPS:
+            return
+        self._hesitation.extend(random.choice(HESITATION_CLIPS))
+        self._hesitation_started = True
+
     # ------------------------------------------------------------------ model
 
     async def _pump_model(self) -> None:
@@ -177,6 +244,7 @@ class CallBridge:
             if kind == "audio":
                 received_at = time.monotonic()
                 pcm8k, self._carry = audio.downsample_24k_to_8k(event["pcm24k"], self._carry)
+                self._hesitation.clear()
                 if not self._speaking:
                     self._speaking = True
                     self._turn_id = self._pending_turn_id or (self._turn_id + 1)
@@ -214,6 +282,8 @@ class CallBridge:
             elif kind == "turn_complete":
                 self.stats["turns"] += 1
                 self._speaking = False
+                self._user_audio_seen = False
+                self._hesitation_started = False
                 if self._hangup_after_response:
                     await self._drain_and_close()
                     return
