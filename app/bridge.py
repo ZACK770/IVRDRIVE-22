@@ -100,6 +100,11 @@ class CallBridge:
         self._input_batch_frames = input_batch_frames
         self._vad_silence_ms = vad_silence_ms
         self._vad_prefix_ms = vad_prefix_ms
+        self._hesitation_silence_s = (
+            vad_silence_ms / 1000
+            if vad_silence_ms is not None
+            else HESITATION_SILENCE_S
+        )
         self._out: collections.deque[bytes] = collections.deque()
         self._hesitation: collections.deque[bytes] = collections.deque()
         self._carry = b""
@@ -159,7 +164,7 @@ class CallBridge:
                 and not self._speaking
                 and not self._hesitation_started
                 and self._last_user_audio is not None
-                and time.monotonic() - self._last_user_audio >= HESITATION_SILENCE_S
+                and time.monotonic() - self._last_user_audio >= self._hesitation_silence_s
             ):
                 self._start_hesitation()
             assert self._session is not None
