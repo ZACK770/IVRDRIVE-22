@@ -39,6 +39,7 @@ HESITATION_FILES = (
     "hesitation_02.wav",
     "hesitation_03.wav",
 )
+GREETING_FILE = "greeting.wav"
 
 GREETING = prompt.GREETING
 
@@ -51,33 +52,36 @@ TRANSFER_FRAME = os.getenv(
 )
 
 
-def _load_hesitation_clips() -> tuple[tuple[bytes, ...], ...]:
-    clips: list[tuple[bytes, ...]] = []
-    for file_name in HESITATION_FILES:
-        path = HESITATION_AUDIO_DIR / file_name
-        try:
-            with wave.open(str(path), "rb") as source:
-                if (
-                    source.getnchannels() != 1
-                    or source.getsampwidth() != 2
-                    or source.getframerate() != 8000
-                ):
-                    raise ValueError("expected mono PCM16LE at 8000Hz")
-                payload = source.readframes(source.getnframes())
-        except (OSError, ValueError) as exc:
-            log.warning("could not load hesitation clip %s: %s", path, exc)
-            continue
+def _load_audio_frames(file_name: str) -> tuple[bytes, ...]:
+    path = HESITATION_AUDIO_DIR / file_name
+    try:
+        with wave.open(str(path), "rb") as source:
+            if (
+                source.getnchannels() != 1
+                or source.getsampwidth() != 2
+                or source.getframerate() != 8000
+            ):
+                raise ValueError("expected mono PCM16LE at 8000Hz")
+            payload = source.readframes(source.getnframes())
+    except (OSError, ValueError) as exc:
+        log.warning("could not load audio clip %s: %s", path, exc)
+        return ()
+    return tuple(
+        payload[offset : offset + FRAME_BYTES].ljust(FRAME_BYTES, b"\x00")
+        for offset in range(0, len(payload), FRAME_BYTES)
+    )
 
-        frames = tuple(
-            payload[offset : offset + FRAME_BYTES].ljust(FRAME_BYTES, b"\x00")
-            for offset in range(0, len(payload), FRAME_BYTES)
-        )
-        if frames:
-            clips.append(frames)
-    return tuple(clips)
+
+def _load_hesitation_clips() -> tuple[tuple[bytes, ...], ...]:
+    return tuple(
+        frames
+        for file_name in HESITATION_FILES
+        if (frames := _load_audio_frames(file_name))
+    )
 
 
 HESITATION_CLIPS = _load_hesitation_clips()
+GREETING_CLIP = _load_audio_frames(GREETING_FILE)
 
 
 class CallBridge:
@@ -360,6 +364,10 @@ class CallBridge:
         system_prompt = db.get_prompt("system")
         if self._tools.caller:
             system_prompt += f"\nמספר הטלפון של המתקשר הנוכחי הוא {self._tools.caller}."
+        tasks: list[asyncio.Task] = []
+        if GREETING_CLIP:
+            self._out.extend(GREETING_CLIP)
+            tasks.append(asyncio.create_task(self._pump_output()))
         async with GeminiLiveSession(
             self._api_key,
             system_prompt,
@@ -373,13 +381,16 @@ class CallBridge:
         ) as session:
             self._session = session
             greeting = db.get_botconfig().get("opening_sentence") or prompt.GREETING
-            if greeting:
+            if greeting and not GREETING_CLIP:
                 await session.send_text(f"אמור עכשיו בדיוק את המשפט הזה: {greeting}")
-            tasks = [
-                asyncio.create_task(self._pump_input()),
-                asyncio.create_task(self._pump_output()),
-                asyncio.create_task(self._pump_model()),
-            ]
+            tasks.extend(
+                (
+                    asyncio.create_task(self._pump_input()),
+                    asyncio.create_task(self._pump_model()),
+                )
+            )
+            if not GREETING_CLIP:
+                tasks.append(asyncio.create_task(self._pump_output()))
             try:
                 done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
                 for task in done:
