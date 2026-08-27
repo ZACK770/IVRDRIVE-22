@@ -58,6 +58,8 @@ class CallBridge:
         self._session: GeminiLiveSession | None = None
         self._last_user_audio: float | None = None
         self._speaking = False
+        self._turn_id = 0
+        self._active_turn_id: int | None = None
         self._hangup_after_response = False
         self._meter = cost.UsageMeter()
         self.stats: dict[str, object] = {
@@ -84,10 +86,25 @@ class CallBridge:
                 continue
             chunk = b"".join(batch)
             batch.clear()
-            if audio.rms(chunk) > 200:  # ignore the PBX's constant-8 silence
+            rms = audio.rms(chunk)
+            if rms > 200:  # ignore the PBX's constant-8 silence
                 self._last_user_audio = time.monotonic()
+                self._cap.trace(
+                    "user_audio_batch_ready",
+                    rms=rms,
+                    bytes=len(chunk),
+                    batch_frames=INPUT_BATCH_FRAMES,
+                )
             assert self._session is not None
-            await self._session.send_audio(audio.upsample_8k_to_16k(chunk))
+            send_started = time.monotonic()
+            pcm16k = audio.upsample_8k_to_16k(chunk)
+            resample_ms = round((time.monotonic() - send_started) * 1000, 3)
+            await self._session.send_audio(pcm16k)
+            self._cap.trace(
+                "gemini_audio_sent",
+                bytes=len(pcm16k),
+                resample_ms=resample_ms,
+            )
 
     # ----------------------------------------------------------------- output
 
@@ -107,6 +124,13 @@ class CallBridge:
             except Exception:
                 return
             self._cap.record("out", "binary", frame)
+            if self._active_turn_id is not None and frame != SILENCE_FRAME:
+                self._cap.trace(
+                    "pbx_audio_sent",
+                    self._active_turn_id,
+                    bytes=len(frame),
+                )
+                self._active_turn_id = None
 
     async def _drain_and_close(self, *, max_wait_s: float = 30.0, linger_s: float = 1.0) -> None:
         """Play out every queued frame, then give the PBX jitter buffer a moment
@@ -137,14 +161,34 @@ class CallBridge:
         async for event in self._session.events():
             kind = event["type"]
             if kind == "audio":
+                received_at = time.monotonic()
                 pcm8k, self._carry = audio.downsample_24k_to_8k(event["pcm24k"], self._carry)
                 if not self._speaking:
                     self._speaking = True
+                    self._turn_id += 1
+                    self._active_turn_id = self._turn_id
+                    first_audio_ms = round(
+                        (received_at - self._last_user_audio) * 1000, 3
+                    ) if self._last_user_audio is not None else None
+                    self._cap.trace(
+                        "gemini_first_audio",
+                        self._turn_id,
+                        bytes=len(event["pcm24k"]),
+                        first_audio_ms=first_audio_ms,
+                    )
                     if self._last_user_audio is not None:
-                        latency = round((time.monotonic() - self._last_user_audio) * 1000)
+                        latency = round((received_at - self._last_user_audio) * 1000)
                         self.stats["reply_latency_ms"].append(latency)
                         log.info("[%s] reply latency %d ms", self._cap.call_id, latency)
+                resample_started = time.monotonic()
                 self._enqueue(pcm8k)
+                self._cap.trace(
+                    "audio_enqueued",
+                    self._turn_id if self._turn_id else None,
+                    bytes=len(pcm8k),
+                    resample_ms=round((time.monotonic() - resample_started) * 1000, 3),
+                    queue_frames=len(self._out),
+                )
             elif kind == "interrupted":
                 self.stats["interruptions"] += 1
                 self._out.clear()
@@ -164,8 +208,16 @@ class CallBridge:
             elif kind == "tool_call":
                 responses = []
                 for call in event["calls"]:
+                    tool_started = time.monotonic()
                     result = self._tools.run(call["name"], call.get("args") or {})
+                    tool_ms = round((time.monotonic() - tool_started) * 1000, 3)
                     self.stats["tool_calls"].append({"name": call["name"], "result": result})
+                    self._cap.trace(
+                        "tool_completed",
+                        self._turn_id if self._turn_id else None,
+                        name=call["name"],
+                        duration_ms=tool_ms,
+                    )
                     responses.append(
                         {"id": call.get("id"), "name": call["name"], "response": result}
                     )

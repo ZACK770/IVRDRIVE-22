@@ -76,14 +76,29 @@ class CallCapture:
         self.closed_reason: str | None = None
         #: Anything a caller wants recorded alongside the capture, e.g. AI stats.
         self.extra: dict[str, Any] = {}
+        self.trace_events = 0
         self._last_inbound_ms: float | None = None
         self._frames_file = (self.dir / "frames.jsonl").open("w", encoding="utf-8")
+        self._trace_file = (self.dir / "latency.jsonl").open("w", encoding="utf-8")
         self._inbound_raw = (self.dir / "inbound.bin").open("wb")
         #: JSON-wrapped audio is kept apart from raw binary frames so a stray
         #: base64 field can never shift the byte alignment of the real stream.
         self._inbound_json_raw = (self.dir / "inbound_json.bin").open("wb")
         self._outbound_raw = (self.dir / "outbound.bin").open("wb")
         self._write_meta()
+
+    def trace(self, event: str, turn_id: int | None = None, **fields: Any) -> None:
+        """Write a compact timing event without recording audio or secrets."""
+        entry: dict[str, Any] = {
+            "event": event,
+            "t_ms": self._elapsed_ms(),
+        }
+        if turn_id is not None:
+            entry["turn_id"] = turn_id
+        entry.update(fields)
+        self.trace_events += 1
+        self._trace_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        self._trace_file.flush()
 
     # ---------------------------------------------------------------- record
 
@@ -156,6 +171,7 @@ class CallCapture:
         self.closed_reason = reason
         for handle in (
             self._frames_file,
+            self._trace_file,
             self._inbound_raw,
             self._inbound_json_raw,
             self._outbound_raw,
@@ -218,6 +234,10 @@ class CallCapture:
             "inferred_frame_ms": self._inferred_frame_ms(common_sizes, duration),
             "first_text_frames": self.first_text_frames,
             "closed_reason": self.closed_reason,
+            "latency_trace": {
+                "path": "latency.jsonl",
+                "events": self.trace_events,
+            },
             "codec_verdict": verdict,
             **self.extra,
         }

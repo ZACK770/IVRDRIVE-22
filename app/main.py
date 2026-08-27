@@ -361,6 +361,7 @@ async def _handle(ws: WebSocket) -> None:
                 continue
 
             entry = cap.record("in", kind, payload)
+            cap.trace("pbx_frame_received", bytes=len(payload), kind=kind)
             if cap.inbound_frames <= 5 or kind == "text":
                 log.info("[%s] %s", call_id, json.dumps(entry, ensure_ascii=False)[:1200])
 
