@@ -52,7 +52,7 @@ only when the conversation needs it:
 |---|---|
 | `get_customer` | Name, preferred pickup address and notes for the caller |
 | `get_recent_call` | The caller's previous call within 10 minutes, so a redial resumes instead of restarting |
-| `lookup_price` | The only source of prices; the prompt forbids inventing one. Matches either direction |
+| Price knowledge | The only source of prices; the prompt forbids inventing one. |
 | `save_order` | Writes the confirmed order |
 
 The caller's number comes from the PBX `start` frame, so identification needs no

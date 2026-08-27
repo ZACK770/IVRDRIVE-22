@@ -8,9 +8,8 @@ actually needs them, which keeps the first response fast.
 from __future__ import annotations
 
 import logging
-import re
 import threading
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -21,30 +20,6 @@ log = logging.getLogger("tools")
 
 #: A caller who redials within this window is treated as continuing one errand.
 RECENT_CALL_MINUTES = 10
-
-
-def _normalise_place(name: str) -> str:
-    return "".join(c for c in (name or "") if c not in "-,.'\"()[]/").replace(" ", "").lower()
-
-
-def _extract_price_from_text(text: str, origin: str, destination: str) -> int | None:
-    """Scan a Hebrew price knowledge block for a route and a price."""
-    if not text:
-        return None
-    target_origin = _normalise_place(origin)
-    target_destination = _normalise_place(destination)
-    for line in text.splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        normalised = _normalise_place(line)
-        # Match the route in either direction.
-        if target_origin in normalised and target_destination in normalised:
-            # Find the first integer that looks like a price (typically at the end).
-            numbers = [int(n) for n in re.findall(r"\d+", line) if int(n) > 10]
-            if numbers:
-                return numbers[-1]
-    return None
 
 
 DECLARATIONS: list[dict[str, Any]] = [
@@ -96,18 +71,6 @@ DECLARATIONS: list[dict[str, Any]] = [
                     "description": "כמה נסיעות להחזיר. ברירת מחדל: 5.",
                 },
             },
-        },
-    },
-    {
-        "name": "lookup_price",
-        "description": "בדיקת מחיר למסלול מוצא-יעד.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "origin": {"type": "string", "description": "כתובת מוצא"},
-                "destination": {"type": "string", "description": "כתובת יעד"},
-            },
-            "required": ["origin", "destination"],
         },
     },
     {
@@ -230,7 +193,6 @@ class ToolContext:
             "get_points": self._get_points,
             "get_driver_reputation": self._get_driver_reputation,
             "get_passenger_ride_history": self._get_passenger_ride_history,
-            "lookup_price": self._lookup_price,
             "save_order": self._save_order,
             "hangup_call": self._hangup_call,
             "transfer_to_representative": self._transfer_to_representative,
@@ -357,70 +319,6 @@ class ToolContext:
                 for row in rows
             ]
         return {"found": bool(rides), "phone": phone, "rides": rides}
-
-    def _lookup_price(self, args: dict[str, Any]) -> dict[str, Any]:
-        origin = (args.get("origin") or "").strip()
-        destination = (args.get("destination") or "").strip()
-        if not origin or not destination:
-            return {"found": False, "error": "חסר מוצא או יעד"}
-
-        botconfig = db.get_botconfig()
-        knowledge = (botconfig.get("knowledge") or "").lower()
-
-        with db.session_scope() as session:
-            # The caller may say "ירושלים ארנוף" while the price list only has
-            # "בני ברק ירושלים". Resolve to the canonical city/area first, but
-            # always try the exact phrase before downgrading to city-level.
-            origin_city = dispatch.resolve_area(session, origin) or origin
-            destination_city = dispatch.resolve_area(session, destination) or destination
-
-            # 1. Try the configured price knowledge (exact, then city-level).
-            pairs = [(origin, destination), (origin_city, destination_city)]
-            seen = set()
-            for o, d in pairs:
-                key = (o, d)
-                if key in seen:
-                    continue
-                seen.add(key)
-                price = _extract_price_from_text(knowledge, o, d)
-                if price is not None:
-                    return {"found": True, "origin": origin, "destination": destination, "price": price}
-
-            # 2. Fall back to the average of recent completed orders.
-            since = datetime.utcnow() - timedelta(days=90)
-
-            def _recent(o: str, d: str) -> list[db.Order]:
-                return list(session.scalars(
-                    select(db.Order)
-                    .where(
-                        db.Order.origin.ilike(f"%{o}%"),
-                        db.Order.destination.ilike(f"%{d}%"),
-                        db.Order.status == "done",
-                        db.Order.price != None,
-                        db.Order.created_at >= since,
-                    )
-                    .order_by(db.Order.created_at.desc())
-                    .limit(20)
-                ).all())
-
-            seen.clear()
-            for o, d in pairs:
-                key = (o, d)
-                if key in seen:
-                    continue
-                seen.add(key)
-                rows = _recent(o, d)
-                prices = [float(row.price) for row in rows if row.price is not None]
-                if prices:
-                    return {
-                        "found": True,
-                        "origin": origin,
-                        "destination": destination,
-                        "price": round(sum(prices) / len(prices), 0),
-                        "based_on": len(prices),
-                    }
-
-            return {"found": False, "origin": origin, "destination": destination}
 
     def _save_order(self, args: dict[str, Any]) -> dict[str, Any]:
         with db.session_scope() as session:

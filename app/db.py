@@ -477,15 +477,7 @@ def botconfig_to_prompt(config: dict) -> str:
     questionnaire = config.get("questionnaire", [])
     q_and_a = config.get("q_and_a", [])
 
-    if knowledge and len(knowledge) <= 500:
-        knowledge_text = knowledge
-    else:
-        lines = knowledge.count("\n") + 1 if knowledge and knowledge.strip() else 0
-        knowledge_text = (
-            "מחירים וכללים עסקיים נמצאים ב-BotConfig. "
-            f"({lines} שורות זמינות לכלי lookup_price). "
-            "כשצריך מחיר — קרא לכלי lookup_price בלבד. אין לנחש מחירים."
-        )
+    knowledge_text = knowledge
 
     parts = [
         identity,
@@ -563,8 +555,8 @@ DEFAULT_BOTCONFIG: dict = {
         "כשלקוח שואל על קרדיטים — קרא ל-get_points. "
         "כשנהג שואל על מוניטין — קרא ל-get_driver_reputation. "
         "כשלקוח שואל על נסיעות קודמות — קרא ל-get_passenger_ride_history. "
-        "כשצריך מחיר — קרא ל-lookup_price ואל תנחש.\n"
-        "אם lookup_price מחזיר found=false, אמור שההזמנה תועבר לנהג עם הצעת מחיר. אל תסרב את הנסיעה."
+        "כשצריך מחיר, השתמש רק במחיר שמופיע בידע שהוגדר ואל תנחש.\n"
+        "אם אין מחיר מתאים בידע, אמור שההזמנה תועבר לנהג עם הצעת מחיר. אל תסרב את הנסיעה."
     ),
     "guidelines": (
         "היה אנושי וענייני, אדיב יעיל ומהיר. ניסוח קצר ומתומצת. "
@@ -856,7 +848,6 @@ DEFAULT_BOTCONFIG: dict = {
         "get_points",
         "get_driver_reputation",
         "get_passenger_ride_history",
-        "lookup_price",
         "redeem_order",
         "create_referral",
     ],
@@ -866,7 +857,7 @@ DEFAULT_BOTCONFIG: dict = {
             "question": "מאיפה לאיפה אתה צריך?",
             "instructions": (
                 "חובה לקבל שם תקין של עיר מוצא ועיר יעד. "
-                "אם המחיר לא נמצא במאגר (lookup_price מחזיר found=false), אמור שההזמנה תועבר לנהג עם הצעת מחיר. "
+                "אם המחיר לא נמצא בידע שהוגדר, אמור שההזמנה תועבר לנהג עם הצעת מחיר. "
                 "אל תסרב נסיעה רק בגלל שהיא פנימית; נסיעות פנימיות באותה עיר מותרות כל עוד יש להן מחיר במאגר."
             ),
         },
@@ -886,7 +877,7 @@ DEFAULT_BOTCONFIG: dict = {
         {
             "id": "price_confirm",
             "question": "המחיר הוא {{מחיר}}. האם מקובל עליך?",
-            "instructions": "את המחיר אתה לוקח מ-lookup_price. אם הכלי מחזיר found=false, אמור ללקוח שההזמנה תועבר לנהג עם הצעת מחיר.",
+            "instructions": "את המחיר אתה לוקח רק מהידע שהוגדר. אם אין מחיר מתאים, אמור ללקוח שההזמנה תועבר לנהג עם הצעת מחיר.",
         },
     ],
     "q_and_a": [

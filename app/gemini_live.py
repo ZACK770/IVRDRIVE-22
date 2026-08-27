@@ -27,11 +27,9 @@ INPUT_RATE = 16000
 OUTPUT_RATE = 24000
 
 #: End-of-turn detection dominates perceived latency: the model cannot start
-#: answering until its VAD decides the caller stopped, and the default wait is
-#: long enough that a mid-sentence pause reads as the end of the turn. 300ms is
-#: short enough to feel conversational and still longer than the pauses inside
-#: a spoken Hebrew sentence.
-SILENCE_MS = int(os.getenv("GEMINI_VAD_SILENCE_MS", "300"))
+#: answering until its VAD decides the caller stopped. 150ms is tuned for
+#: conversational responsiveness on the phone line.
+SILENCE_MS = int(os.getenv("GEMINI_VAD_SILENCE_MS", "150"))
 #: Audio kept from before speech onset, so a clipped first syllable does not
 #: cost a whole turn in misunderstanding.
 PREFIX_PADDING_MS = int(os.getenv("GEMINI_VAD_PREFIX_MS", "120"))
