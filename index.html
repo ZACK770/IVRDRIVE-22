@@ -31,5 +31,51 @@
     document.querySelectorAll('.mode').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.mode').forEach(item=>item.classList.remove('active'));button.classList.add('active');state.mode=button.dataset.mode;calculate()}));['roomW','roomL'].forEach(id=>$(id).addEventListener('input',calculate));window.addEventListener('resize',calculate);calculate();
     $('lead-form').addEventListener('submit',event=>{event.preventDefault();const form=new FormData(event.currentTarget),leads=JSON.parse(localStorage.getItem('foldingLeads')||'[]');leads.push({name:form.get('name'),phone:form.get('phone'),email:form.get('email'),createdAt:new Date().toISOString()});localStorage.setItem('foldingLeads',JSON.stringify(leads));event.currentTarget.reset();$('form-status').textContent='תודה, הפרטים התקבלו. נחזור אליכם בהקדם.'});
   </script>
+  <style>
+    .product-art{background:#0a0a0a!important}.product-art img{width:100%;height:100%;object-fit:cover;display:block;mix-blend-mode:normal}.hero-visual{overflow:hidden}.hero-product-image{width:min(100%,520px);height:420px;object-fit:cover;filter:drop-shadow(0 28px 25px rgba(0,0,0,.55));position:relative;z-index:1}.gallery{grid-template-columns:1.2fr .8fr .8fr;grid-auto-rows:220px}.gallery figure{background:transparent}.gallery img{mix-blend-mode:normal;opacity:1}.gallery figure:nth-child(4){transform:translateY(20px)}.gallery figure:nth-child(5){transform:translateY(-15px)}@media(max-width:850px){.hero-product-image{height:340px}.gallery{grid-template-columns:1fr;grid-auto-rows:220px}.gallery figure:nth-child(2),.gallery figure:nth-child(3),.gallery figure:nth-child(4),.gallery figure:nth-child(5){transform:none}}
+  </style>
+  <script>
+    const productImages=['assets/spekal-front.jpg','assets/spekal-folded.jpg','assets/spekal-display.jpg'];
+    document.querySelectorAll('.products .product-art').forEach((art,index)=>{
+      const image=document.createElement('img');
+      image.src=productImages[index]||'assets/spekal-front.jpg';
+      image.alt='ספקל — פתרון מתקפל';
+      art.replaceChildren(image);
+    });
+    document.querySelectorAll('.products .link').forEach(link=>{
+      link.href='tech.html#product';
+      link.textContent='לדף המוצר';
+    });
+    const heroVisual=document.querySelector('.hero-visual');
+    if(heroVisual){
+      const image=document.createElement('img');
+      image.className='hero-product-image';
+      image.src='assets/spekal-hero.jpg';
+      image.alt='ספקל בחלל מעוצב';
+      heroVisual.querySelector('.glow')?.remove();
+      heroVisual.querySelector('.chair')?.remove();
+      heroVisual.prepend(image);
+    }
+    const gallery=document.querySelector('.gallery');
+    if(gallery){
+      const images=[
+        ['assets/spekal-hero.jpg','ספקל בחלל מעוצב'],
+        ['assets/spekal-front.jpg','ספקל פתוח'],
+        ['assets/spekal-folded.jpg','ספקל מקופל'],
+        ['assets/spekal-display.jpg','ספקל בתצוגה'],
+        ['assets/spekal-brand.jpg','מתקפלים — פתרונות אלומיניום חכמים']
+      ];
+      gallery.replaceChildren(...images.map(([src,alt])=>{
+        const figure=document.createElement('figure');
+        const image=document.createElement('img');
+        image.src=src;
+        image.alt=alt;
+        const caption=document.createElement('figcaption');
+        caption.textContent=alt;
+        figure.append(image,caption);
+        return figure;
+      }));
+    }
+  </script>
 </body>
 </html>

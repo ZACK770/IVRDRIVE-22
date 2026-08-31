@@ -31,5 +31,8 @@
     new GLTFLoader().load('./assets/name-new-v1.glb',gltf=>{const model=gltf.scene,box=new THREE.Box3().setFromObject(model),size=box.getSize(new THREE.Vector3()),center=box.getCenter(new THREE.Vector3());model.position.sub(center);model.scale.setScalar(2.8/Math.max(size.length(),.001));scene.add(model)},undefined,()=>{canvas.parentElement.classList.add('unavailable')});
     function resize(){const box=canvas.getBoundingClientRect();renderer.setSize(box.width,box.height,false);camera.aspect=box.width/Math.max(box.height,1);camera.updateProjectionMatrix()}window.addEventListener('resize',resize);resize();(function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)})();
   </script>
+  <style>
+    #model{display:none}.hero-model{background:linear-gradient(135deg,rgba(11,12,13,.2),rgba(11,12,13,.8)),url('assets/spekal-front-logo.png') center/cover no-repeat}.model-note{background:rgba(11,12,13,.72);padding:10px 12px}
+  </style>
 </body>
 </html>
