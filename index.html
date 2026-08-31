@@ -42,8 +42,8 @@
       image.alt='ספקל — פתרון מתקפל';
       art.replaceChildren(image);
     });
-    document.querySelectorAll('.products .link').forEach(link=>{
-      link.href='tech.html#product';
+    document.querySelectorAll('.products .link').forEach((link,index)=>{
+      link.href=`product.html?product=${['spekal','table','bed'][index]||'spekal'}`;
       link.textContent='לדף המוצר';
     });
     const heroVisual=document.querySelector('.hero-visual');
