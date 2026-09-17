@@ -1,5 +1,10 @@
 __pycache__/
 *.pyc
 captures/
+audio/
 .venv/
 .env
+bot.db
+*.db
+node_modules/
+web/dist/
