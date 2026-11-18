@@ -67,7 +67,6 @@ export async function handleCall(p, env, ctx) {
       hangupSave: "yes",
       sttSoft: true,
       files: [{ text: "דבר אחרי הצליל, ובסיום הקש סולמית." }],
-      removeParams: ["choice"],
     };
   }
   if (choice === "3") return menu(`${await latestReplies(env)} ${MENU}`, consumed);
@@ -119,7 +118,11 @@ async function readParams(request, url) {
   if (request.method === "POST") {
     const type = request.headers.get("content-type") || "";
     if (type.includes("application/json")) Object.assign(params, await request.json().catch(() => ({})));
-    else Object.assign(params, Object.fromEntries(new URLSearchParams(await request.text())));
+    else {
+      const body = await request.text();
+      console.log(JSON.stringify({ method: "POST", type, bodyKeys: [...new URLSearchParams(body).keys()], bodyLength: body.length }));
+      Object.assign(params, Object.fromEntries(new URLSearchParams(body)));
+    }
   }
   return params;
 }
