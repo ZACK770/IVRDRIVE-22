@@ -36,6 +36,11 @@ export default {
 
 export async function handleCall(p, env, ctx) {
   if (env.PBX_SYSTEM && p.PBXnum && p.PBXnum !== env.PBX_SYSTEM) return { type: "hangup" };
+  if (!p.FILEID_msg && p.PBXcallId && (await env.STATE.get(`rec:${p.PBXcallId}`))) {
+    // The PBX saves the recording but does not always return its FILEID_ params.
+    const file = await findRecording(p.PBXcallId, env).catch(() => null);
+    if (file) Object.assign(p, { FILEID_msg: file.ivrName, DURATION_msg: file.details?.duration });
+  }
   if (p.PBXcallStatus === "HANGUP") {
     if (p.FILEID_msg) ctx.waitUntil(relayRecording(p, env));
     return {};
@@ -48,6 +53,7 @@ export async function handleCall(p, env, ctx) {
   const consumed = ["msg", "FILE_msg", "FILEID_msg", "PATH_msg", "SIZE_msg", "DURATION_msg", "DIGIT_msg", "TEXT_msg"];
 
   if (p.FILEID_msg) {
+    await env.STATE.delete(`rec:${p.PBXcallId}`);
     ctx.waitUntil(relayRecording(p, env));
     return menu("ההודעה התקבלה ומועברת לדבין. בעוד דקה או שתיים אפשר לשמוע את התשובה בהקשה על 3. " + MENU, consumed);
   }
@@ -59,6 +65,7 @@ export async function handleCall(p, env, ctx) {
   }
   if (choice === "1") return menu(`${await currentStatus(env, ctx)} ${MENU}`, consumed);
   if (choice === "2") {
+    await env.STATE.put(`rec:${p.PBXcallId}`, "1", { expirationTtl: 3600 });
     return {
       type: "record",
       name: "msg",
@@ -244,6 +251,14 @@ export function stripForSpeech(text) {
     .replace(/[*_`#>|[\]()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+async function findRecording(callId, env) {
+  const res = await fetch(`${PBX_API}/ivrFilesApi.php?action=filesList&extensionId=${env.PBX_EXTENSION_ID}&apiKey=${env.PBX_API_KEY}`, {
+    headers: { "User-Agent": UA },
+  });
+  const files = await res.json();
+  return (Array.isArray(files) ? files : []).filter((f) => f.details?.callId === callId).sort((a, b) => b.time - a.time)[0] || null;
 }
 
 // ---- recordings --------------------------------------------------------------

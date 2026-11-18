@@ -107,3 +107,28 @@ test("outbound call reads the question unless flash mode", () => {
   assert.ok(!voice.messagesType);
   assert.deepEqual(notifyFields("x", { NOTIFY_MODE: "flash" }), { messagesType: "RH" });
 });
+
+test("recording without FILEID params is found by call id", async () => {
+  const realFetch = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes("filesList")) return Response.json([{ ivrName: "R9", time: "2", details: { callId: "c1", duration: "5" } }]);
+    if (u.includes("fileDownload")) return new Response(new Uint8Array([1]), { headers: { "content-type": "audio/mp3" } });
+    if (u.includes("generativelanguage")) return Response.json({ candidates: [{ content: { parts: [{ text: "שלום" }] } }] });
+    posts.push(u);
+    return Response.json({});
+  };
+  try {
+    const e = env({ DEVIN_API_KEY: "d", DEVIN_ORG_ID: "org", PBX_API_KEY: "p", GEMINI_API_KEY: "g", PBX_EXTENSION_ID: "14142" });
+    const c = ctx();
+    await handleCall(call({ choice: "2" }), e, c);
+    const after = await handleCall(call({}), e, c);
+    await Promise.all(c.tasks);
+    assert.equal(after.type, "simpleMenu");
+    assert.ok(posts.some((u) => u.endsWith("/sessions/devin-bot/messages")));
+    assert.ok(await e.STATE.get("relayed:R9"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
