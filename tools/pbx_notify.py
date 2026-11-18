@@ -5,7 +5,7 @@ prices the request without dialing) and ``code`` only prints what it would send.
 Pass ``--live`` to really dial.
 
     python tools/pbx_notify.py flash 0521234567
-    python tools/pbx_notify.py voice 0521234567 "העבודה הסתיימה" --live
+    python tools/pbx_notify.py --live voice 0521234567 "העבודה הסתיימה"
     python tools/pbx_notify.py code 0521234567 --cid 1234 --mode voice
     python tools/pbx_notify.py report 140312
 
