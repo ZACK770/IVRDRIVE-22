@@ -1,0 +1,23 @@
+name = "devin-phone-line"
+main = "src/worker.js"
+compatibility_date = "2025-01-01"
+workers_dev = true
+
+[vars]
+DEVIN_ORG_ID = "org-92af4cd6f7a84412b6fe65f25c462300"
+BOT_SESSION_ID = "devin-e97d36b449a64908929fcb63521dfc9e"
+PBX_SYSTEM = "0765673575"
+ALLOWED_CALLERS = "0527180504"
+NOTIFY_PHONE = "0527180504"
+OUTBOUND_ENABLED = "1"
+NOTIFY_MIN_GAP_MINUTES = "180"
+GEMINI_MODEL = "gemini-flash-latest"
+
+[[kv_namespaces]]
+binding = "STATE"
+id = "35de9eb4881147b0b0679e499c331fb4"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+# Secrets (wrangler secret put): CALLBACK_KEY, DEVIN_API_KEY, GEMINI_API_KEY, PBX_API_KEY
