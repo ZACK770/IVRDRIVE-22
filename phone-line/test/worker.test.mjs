@@ -141,9 +141,10 @@ test("sweep relays recent unrelayed recordings once", async () => {
     const u = String(url);
     if (u.includes("filesList"))
       return Response.json([
-        { ivrName: "A", time: String(now - 60), details: { callId: "c2", phone: "0527180504", duration: "4" } },
-        { ivrName: "B", time: String(now - 60), details: { callId: "c3", phone: "0501111111", duration: "4" } },
+        { ivrName: "A", time: String(now - 600), details: { callId: "c2", phone: "0527180504", duration: "4" } },
+        { ivrName: "B", time: String(now - 600), details: { callId: "c3", phone: "0501111111", duration: "4" } },
         { ivrName: "C", time: String(now - 9 * 3600), details: { callId: "c4", phone: "0527180504", duration: "4" } },
+        { ivrName: "D", time: String(now - 30), details: { callId: "c5", phone: "0527180504", duration: "4" } },
       ]);
     if (u.includes("fileDownload")) return new Response(new Uint8Array([1]), { headers: { "content-type": "audio/mp3" } });
     if (u.includes("generativelanguage")) return Response.json({ candidates: [{ content: { parts: [{ text: "שלום" }] } }] });

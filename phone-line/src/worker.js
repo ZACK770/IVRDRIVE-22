@@ -275,8 +275,11 @@ async function findRecording(callId, env) {
 
 // Safety net for recordings whose relay failed or whose callback never came.
 export async function sweepRecordings(env) {
-  const since = Date.now() / 1000 - 6 * 3600;
-  const files = (await listRecordings(env)).filter((f) => Number(f.time) > since && allowedCaller(f.details?.phone, env));
+  const now = Date.now() / 1000;
+  // Skip recordings under 3 minutes old: the in-call callback relays those.
+  const files = (await listRecordings(env)).filter(
+    (f) => Number(f.time) > now - 6 * 3600 && Number(f.time) < now - 180 && allowedCaller(f.details?.phone, env),
+  );
   for (const f of await unrelayed(files, env)) {
     await relayRecording({ PBXphone: f.details.phone, PBXcallId: f.details.callId, FILEID_msg: f.ivrName, DURATION_msg: f.details.duration }, env).catch(
       (error) => console.log(JSON.stringify({ sweep: f.ivrName, error: String(error.message || error) })),
