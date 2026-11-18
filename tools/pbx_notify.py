@@ -86,13 +86,13 @@ def main() -> None:
 
     flash = sub.add_parser("flash", help="ring once and hang up (צינתוק, messagesType=RH)")
     voice = sub.add_parser("voice", help="call and read a text message aloud (TTS campaign)")
-    voice.add_argument("text")
-    voice.add_argument("--ring-only", action="store_true", help="ring only; message kept for call-back")
-    voice.add_argument("--retries", type=int, default=1, help="dialRetries, max 5")
     for p in (flash, voice):
         p.add_argument("phone")
         p.add_argument("--caller-id", help="approved callId (default: the system number)")
         p.add_argument("--title", default="Devin notification")
+    voice.add_argument("text")
+    voice.add_argument("--ring-only", action="store_true", help="ring only; message kept for call-back")
+    voice.add_argument("--retries", type=int, default=1, help="dialRetries, max 5")
 
     code = sub.add_parser("code", help="makeCall: show a 4-6 digit code as caller ID, or read it aloud")
     code.add_argument("phone")

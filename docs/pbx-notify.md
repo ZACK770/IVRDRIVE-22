@@ -34,10 +34,10 @@ dialing. `code` has no demo mode, so its dry run only prints the request.
 
 ## Known state (2026-11-18)
 
-- 052-7180504 is opted in to flash calls (`ringFree: 1`), but it is on the account's
-  removal list for voice campaigns (someone pressed 9): `voice` to it returns
-  `errorCode 6`. The removal list cannot be cleared through the documented API; it
-  has to be cleared in the Technoline panel, or by the owner opting back in by phone.
+- 052-7180504 (the owner) is opted in to flash calls, so they are free (`ringFree: 1`).
+  A live test flash call rang it. Voice dry runs to it pass (about 0.15 ₪).
+- `errorCode 6` ("no valid/approved numbers") means the phone number was invalid,
+  for example when the arguments were in the wrong order.
 - Balance at the time: 193.62 ₪.
 
 Official docs: https://pbx.tlivr.com/campaignApiDocs.html ,
