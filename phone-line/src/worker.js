@@ -154,13 +154,18 @@ const sessionId = (id) => (id.startsWith("devin-") ? id : `devin-${id}`);
 
 // Messages are returned oldest first; keep a cursor and a rolling buffer in KV.
 async function syncMessages(env) {
-  const state = (await env.STATE.get("messages", "json")) || { cursor: null, items: [] };
+  const session = sessionId(env.BOT_SESSION_ID);
+  let state = await env.STATE.get("messages", "json");
+  if (!state || state.session !== session) state = { session, cursor: null, items: [] };
+  const seen = new Set(state.items.map((m) => m.id));
   for (let page = 0; page < 20; page++) {
     const query = new URLSearchParams({ first: "200" });
     if (state.cursor) query.set("after", state.cursor);
     const data = await devin(env, `/sessions/${sessionId(env.BOT_SESSION_ID)}/messages?${query}`);
     for (const item of data.items || []) {
-      state.items.push({ source: item.source, text: String(item.message || "").slice(0, 3000), at: Number(item.created_at) * 1000 });
+      if (seen.has(item.event_id)) continue;
+      seen.add(item.event_id);
+      state.items.push({ id: item.event_id, source: item.source, text: String(item.message || "").slice(0, 3000), at: Number(item.created_at) * 1000 });
     }
     if (data.end_cursor) state.cursor = data.end_cursor;
     if (!data.has_next_page) break;
@@ -186,7 +191,7 @@ async function childSessions(env) {
 
 export async function refreshStatus(env, { notify }) {
   const [messages, children] = await Promise.all([syncMessages(env), childSessions(env).catch(() => [])]);
-  const fingerprint = `${messages.length}:${messages.at(-1)?.at}:${children.map((c) => c.status + c.updated).join()}`;
+  const fingerprint = `${sessionId(env.BOT_SESSION_ID)}:${messages.length}:${messages.at(-1)?.at}:${children.map((c) => c.status + c.updated).join()}`;
   const cached = await env.STATE.get("status", "json");
   if (cached?.fingerprint === fingerprint) {
     cached.at = Date.now();
