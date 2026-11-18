@@ -249,13 +249,11 @@ export function stripForSpeech(text) {
 
 async function relayRecording(p, env) {
   const fileId = p.FILEID_msg;
-  const doneKey = `relayed:${fileId}`;
   const pendingKey = `relaying:${fileId}`;
-  if ((await env.STATE.get(doneKey)) || (await env.STATE.get(pendingKey))) return;
+  if ((await env.STATE.get(`relayed:${fileId}`)) || (await env.STATE.get(pendingKey))) return;
   await env.STATE.put(pendingKey, "1", { expirationTtl: 120 });
   try {
     await deliverRecording(p, env, fileId);
-    await env.STATE.put(doneKey, "1", { expirationTtl: 7 * 86400 });
   } finally {
     await env.STATE.delete(pendingKey);
   }
@@ -287,6 +285,7 @@ async function deliverRecording(p, env, fileId) {
     method: "POST",
     body: JSON.stringify({ message }),
   });
+  await env.STATE.put(`relayed:${fileId}`, "1", { expirationTtl: 7 * 86400 });
   await env.STATE.put("lastRelayAt", String(Date.now()));
 }
 
