@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import worker, { allowedCaller, handleCall, inQuietHours, normalizePhone, notifyFields, speechFiles, stripForSpeech } from "../src/worker.js";
+import worker, { allowedCaller, handleCall, sweepRecordings, inQuietHours, normalizePhone, notifyFields, speechFiles, stripForSpeech } from "../src/worker.js";
 
 function kv(initial = {}) {
   const store = new Map(Object.entries(initial).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
@@ -128,6 +128,34 @@ test("recording without FILEID params is found by call id", async () => {
     assert.equal(after.type, "simpleMenu");
     assert.ok(posts.some((u) => u.endsWith("/sessions/devin-bot/messages")));
     assert.ok(await e.STATE.get("relayed:R9"));
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test("sweep relays recent unrelayed recordings once", async () => {
+  const realFetch = globalThis.fetch;
+  const posts = [];
+  const now = Math.floor(Date.now() / 1000);
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("filesList"))
+      return Response.json([
+        { ivrName: "A", time: String(now - 60), details: { callId: "c2", phone: "0527180504", duration: "4" } },
+        { ivrName: "B", time: String(now - 60), details: { callId: "c3", phone: "0501111111", duration: "4" } },
+        { ivrName: "C", time: String(now - 9 * 3600), details: { callId: "c4", phone: "0527180504", duration: "4" } },
+      ]);
+    if (u.includes("fileDownload")) return new Response(new Uint8Array([1]), { headers: { "content-type": "audio/mp3" } });
+    if (u.includes("generativelanguage")) return Response.json({ candidates: [{ content: { parts: [{ text: "שלום" }] } }] });
+    posts.push(u);
+    return Response.json({});
+  };
+  try {
+    const e = env({ DEVIN_API_KEY: "d", DEVIN_ORG_ID: "org", PBX_API_KEY: "p", GEMINI_API_KEY: "g", PBX_EXTENSION_ID: "14142" });
+    await sweepRecordings(e);
+    await sweepRecordings(e);
+    assert.equal(posts.length, 1);
+    assert.ok(await e.STATE.get("relayed:A"));
   } finally {
     globalThis.fetch = realFetch;
   }

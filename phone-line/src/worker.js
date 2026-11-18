@@ -31,6 +31,7 @@ export default {
 
   async scheduled(_event, env, ctx) {
     ctx.waitUntil(refreshStatus(env, { notify: true }));
+    if (env.PBX_EXTENSION_ID) ctx.waitUntil(sweepRecordings(env));
   },
 };
 
@@ -253,12 +254,34 @@ export function stripForSpeech(text) {
     .trim();
 }
 
-async function findRecording(callId, env) {
+async function listRecordings(env) {
   const res = await fetch(`${PBX_API}/ivrFilesApi.php?action=filesList&extensionId=${env.PBX_EXTENSION_ID}&apiKey=${env.PBX_API_KEY}`, {
     headers: { "User-Agent": UA },
   });
   const files = await res.json();
-  return (Array.isArray(files) ? files : []).filter((f) => f.details?.callId === callId).sort((a, b) => b.time - a.time)[0] || null;
+  return (Array.isArray(files) ? files : []).sort((a, b) => b.time - a.time);
+}
+
+async function unrelayed(files, env) {
+  const out = [];
+  for (const f of files) if (!(await env.STATE.get(`relayed:${f.ivrName}`))) out.push(f);
+  return out;
+}
+
+async function findRecording(callId, env) {
+  const files = (await listRecordings(env)).filter((f) => f.details?.callId === callId);
+  return (await unrelayed(files, env))[0] || null;
+}
+
+// Safety net for recordings whose relay failed or whose callback never came.
+export async function sweepRecordings(env) {
+  const since = Date.now() / 1000 - 6 * 3600;
+  const files = (await listRecordings(env)).filter((f) => Number(f.time) > since && allowedCaller(f.details?.phone, env));
+  for (const f of await unrelayed(files, env)) {
+    await relayRecording({ PBXphone: f.details.phone, PBXcallId: f.details.callId, FILEID_msg: f.ivrName, DURATION_msg: f.details.duration }, env).catch(
+      (error) => console.log(JSON.stringify({ sweep: f.ivrName, error: String(error.message || error) })),
+    );
+  }
 }
 
 // ---- recordings --------------------------------------------------------------
