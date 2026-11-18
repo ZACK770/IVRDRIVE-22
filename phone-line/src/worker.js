@@ -42,7 +42,7 @@ export async function handleCall(p, env, ctx) {
   }
   if (!allowedCaller(p.PBXphone, env) || p.bye) return { type: "hangup" };
 
-  console.log(JSON.stringify({ call: p.PBXcallId, path: p.PBXextensionPath, choice: p.choice, file: p.FILEID_msg, status: p.PBXcallStatus }));
+  console.log(JSON.stringify({ call: p.PBXcallId, status: p.PBXcallStatus, choice: p.choice, file: p.FILEID_msg, keys: Object.keys(p).filter((k) => !k.startsWith("TEXT_")) }));
   // Never clear "choice" from a menu response: the PBX applies removeParams after the
   // menu collects its digit, which wiped every key press.
   const consumed = ["msg", "FILE_msg", "FILEID_msg", "PATH_msg", "SIZE_msg", "DURATION_msg", "DIGIT_msg", "TEXT_msg"];
@@ -63,11 +63,9 @@ export async function handleCall(p, env, ctx) {
       type: "record",
       name: "msg",
       max: 180,
-      min: 1,
       confirm: "no",
       hangupSave: "yes",
       sttSoft: true,
-      fileName: "devin_{{PBXcallId}}",
       files: [{ text: "דבר אחרי הצליל, ובסיום הקש סולמית." }],
       removeParams: ["choice"],
     };
