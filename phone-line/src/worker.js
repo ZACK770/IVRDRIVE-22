@@ -191,6 +191,7 @@ export async function refreshStatus(env, { notify }) {
   if (cached?.fingerprint === fingerprint) {
     cached.at = Date.now();
     await env.STATE.put("status", JSON.stringify(cached));
+    if (notify) await maybeNotify(cached, env);
     return cached;
   }
   const transcript = messages
@@ -295,7 +296,7 @@ async function maybeNotify(status, env) {
   if (inQuietHours(new Date())) return;
   const last = (await env.STATE.get("notified", "json")) || {};
   const minGap = Number(env.NOTIFY_MIN_GAP_MINUTES || 180) * 60_000;
-  if (last.digest === status.question_digest || Date.now() - (last.at || 0) < minGap) return;
+  if ((last.ok && last.digest === status.question_digest) || Date.now() - (last.at || 0) < minGap) return;
   const res = await fetch(`${PBX_API}/campaignApi.php`, {
     method: "POST",
     headers: { "User-Agent": UA, "Content-Type": "application/json", Accept: "application/json" },
@@ -313,7 +314,7 @@ async function maybeNotify(status, env) {
 
 export function notifyFields(digest, env) {
   if (env.NOTIFY_MODE === "flash") return { messagesType: "RH" };
-  const text = `שלום אייזיק, כאן דבין. ${stripForSpeech(digest)} כדי לענות, התקשר לשבע שש, חמש שש שבע, שלוש חמש שבע חמש, והקש אפס.`;
+  const text = `שלום אייזיק, כאן דבין. ${stripForSpeech(digest)} כדי לענות, התקשר לאפס שבע שש, חמש שש שבע, שלוש חמש שבע חמש, והקש אפס.`;
   return { audioText: text.slice(0, 450), dialRetries: 1, betweenRetries: 5 };
 }
 
