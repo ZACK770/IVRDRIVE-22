@@ -270,7 +270,7 @@ async function relayRecording(p, env) {
   await env.STATE.put("lastRelayAt", String(Date.now()));
 }
 
-// ---- outbound missed call ----------------------------------------------------------
+// ---- outbound call ----------------------------------------------------------
 
 export function inQuietHours(date, start = 22, end = 8) {
   const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(date));
@@ -291,10 +291,17 @@ async function maybeNotify(status, env) {
       apiKey: env.PBX_API_KEY,
       phones: [env.NOTIFY_PHONE],
       title: "דבין צריך אותך",
-      messagesType: "RH",
+      ...notifyFields(status.question_digest, env),
     }),
   });
-  await env.STATE.put("notified", JSON.stringify({ digest: status.question_digest, at: Date.now(), ok: res.ok }));
+  const result = await res.json().catch(() => ({}));
+  await env.STATE.put("notified", JSON.stringify({ digest: status.question_digest, at: Date.now(), ok: result.status === "OK" }));
+}
+
+export function notifyFields(digest, env) {
+  if (env.NOTIFY_MODE === "flash") return { messagesType: "RH" };
+  const text = `שלום אייזיק, כאן דבין. ${stripForSpeech(digest)} כדי לענות, התקשר לשבע שש, חמש שש שבע, שלוש חמש שבע חמש, והקש אפס.`;
+  return { audioText: text.slice(0, 450), dialRetries: 1, betweenRetries: 5 };
 }
 
 // ---- helpers -----------------------------------------------------------------

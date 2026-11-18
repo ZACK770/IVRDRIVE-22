@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import worker, { allowedCaller, handleCall, inQuietHours, normalizePhone, speechFiles, stripForSpeech } from "../src/worker.js";
+import worker, { allowedCaller, handleCall, inQuietHours, normalizePhone, notifyFields, speechFiles, stripForSpeech } from "../src/worker.js";
 
 function kv(initial = {}) {
   const store = new Map(Object.entries(initial).map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]));
@@ -94,4 +94,11 @@ test("speech helpers", () => {
   assert.ok(files.length > 1 && files.every((f) => f.text.length <= 360));
   assert.ok(inQuietHours(new Date("2026-11-18T22:30:00Z")));
   assert.ok(!inQuietHours(new Date("2026-11-18T10:00:00Z")));
+});
+
+test("outbound call reads the question unless flash mode", () => {
+  const voice = notifyFields("צריך אישור על **PR**", {});
+  assert.match(voice.audioText, /צריך אישור על PR/);
+  assert.ok(!voice.messagesType);
+  assert.deepEqual(notifyFields("x", { NOTIFY_MODE: "flash" }), { messagesType: "RH" });
 });

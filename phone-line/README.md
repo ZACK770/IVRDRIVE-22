@@ -12,8 +12,9 @@ Isaac calls **076-567-3575 and presses 0** to reach the QA Bot by phone.
 
 Recordings are transcribed (Gemini, falling back to the PBX soft STT) and posted to the Bot's
 conversation through the Devin API as a message from Isaac. Every 5 minutes a cron refreshes the
-status summary; when the Bot has an open question for Isaac it sends him a missed call (flash,
-`messagesType=RH`) — at most once per question, 3 hours apart, never 22:00–08:00 Israel time.
+status summary; when the Bot has an open question for Isaac it calls him and reads the question
+(TTS campaign; `NOTIFY_MODE=flash` for a missed call instead) — at most once per question,
+3 hours apart, never 22:00–08:00 Israel time.
 
 ## Pieces
 
@@ -36,6 +37,3 @@ If the Bot's main conversation is replaced, update `BOT_SESSION_ID` and redeploy
 npm test
 CLOUDFLARE_ACCOUNT_ID=da53b4cd888030bba791621ea1a39f8c npx wrangler@3 deploy
 ```
-
-Voice campaigns to 052-7180504 stay blocked (PBX removal list, errorCode 6) until Isaac clears
-it, so outbound uses missed calls only; he calls back and presses 0.
