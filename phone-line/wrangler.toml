@@ -22,3 +22,6 @@ id = "35de9eb4881147b0b0679e499c331fb4"
 crons = ["*/5 * * * *"]
 
 # Secrets (wrangler secret put): CALLBACK_KEY, DEVIN_API_KEY, GEMINI_API_KEY, PBX_API_KEY
+
+[observability]
+enabled = true
