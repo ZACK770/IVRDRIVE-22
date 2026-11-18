@@ -13,6 +13,9 @@ function kv(initial = {}) {
     async put(key, value) {
       store.set(key, value);
     },
+    async delete(key) {
+      store.delete(key);
+    },
   };
 }
 
@@ -20,7 +23,8 @@ const env = (extra = {}) => ({
   CALLBACK_KEY: "k",
   PBX_SYSTEM: "0765673575",
   ALLOWED_CALLERS: "0527180504",
-  STATE: kv({ status: { speech: "הכל מתקדם.", at: Date.now() } }),
+  BOT_SESSION_ID: "devin-bot",
+  STATE: kv({ status: { speech: "הכל מתקדם.", at: Date.now(), fingerprint: "devin-bot:1" } }),
   ...extra,
 });
 const ctx = () => ({ tasks: [], waitUntil(p) { this.tasks.push(p.catch(() => {})); } });
@@ -48,6 +52,7 @@ test("entry plays cached status and the menu", async () => {
   const spoken = body.files.map((f) => f.text).join(" ");
   assert.match(spoken, /הכל מתקדם/);
   assert.match(spoken, /הקש 2/);
+  assert.ok(!body.removeParams.includes("choice"));
 });
 
 test("choice 2 records, recording is relayed once and returns to the menu", async () => {

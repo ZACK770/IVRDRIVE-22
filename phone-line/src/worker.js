@@ -127,7 +127,8 @@ async function readParams(request, url) {
 }
 
 async function currentStatus(env, ctx) {
-  const cached = await env.STATE.get("status", "json");
+  const stored = await env.STATE.get("status", "json");
+  const cached = stored?.fingerprint?.startsWith(`${sessionId(env.BOT_SESSION_ID)}:`) ? stored : null;
   const age = cached ? Date.now() - cached.at : Infinity;
   if (cached && age < 10 * 60_000) return cached.speech;
   const fresh = withTimeout(refreshStatus(env, { notify: false }), 7000);
