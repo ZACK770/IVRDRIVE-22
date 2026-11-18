@@ -42,7 +42,10 @@ export async function handleCall(p, env, ctx) {
   }
   if (!allowedCaller(p.PBXphone, env) || p.bye) return { type: "hangup" };
 
-  const consumed = ["choice", "msg", "FILE_msg", "FILEID_msg", "PATH_msg", "SIZE_msg", "DURATION_msg", "DIGIT_msg", "TEXT_msg"];
+  console.log(JSON.stringify({ call: p.PBXcallId, path: p.PBXextensionPath, choice: p.choice, file: p.FILEID_msg, status: p.PBXcallStatus }));
+  // Never clear "choice" from a menu response: the PBX applies removeParams after the
+  // menu collects its digit, which wiped every key press.
+  const consumed = ["msg", "FILE_msg", "FILEID_msg", "PATH_msg", "SIZE_msg", "DURATION_msg", "DIGIT_msg", "TEXT_msg"];
 
   if (p.FILEID_msg) {
     ctx.waitUntil(relayRecording(p, env));
@@ -70,7 +73,7 @@ export async function handleCall(p, env, ctx) {
     };
   }
   if (choice === "3") return menu(`${await latestReplies(env)} ${MENU}`, consumed);
-  return { type: "simpleMessage", files: [{ text: "להתראות." }], removeParams: consumed, addParams: { bye: "1" } };
+  return { type: "simpleMessage", files: [{ text: "להתראות." }], removeParams: ["choice", ...consumed], addParams: { bye: "1" } };
 }
 
 function menu(text, removeParams) {
