@@ -1,9 +1,0 @@
-{
-  "name": "devin-phone-line",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test test/*.test.mjs",
-    "deploy": "npx wrangler@3 deploy"
-  }
-}
